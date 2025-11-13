@@ -13,6 +13,8 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.annotations.Marker
+import org.maplibre.android.annotations.MarkerOptions
 
 @Composable
 fun MapLibreView(modifier: Modifier = Modifier) {
@@ -40,15 +42,22 @@ fun MapLibreView(modifier: Modifier = Modifier) {
         mv.getMapAsync { mapLibreMap ->
             mapLibreMap.setStyle(
                 Style.Builder().fromUri("https://demotiles.maplibre.org/style.json")
-            ) {
+            ) { style ->
+                val ucbLocation = LatLng(-17.3716723, -66.1439156)
+
                 val position = CameraPosition.Builder()
-                    .target(LatLng(-17.3895, -66.1568))
-                    .zoom(12.0)
+                    .target(ucbLocation)
+                    .zoom(15.0)
                     .build()
                 mapLibreMap.moveCamera(CameraUpdateFactory.newCameraPosition(position))
+
+                val markerOptions = MarkerOptions()
+                    .position(ucbLocation)
+                    .title("Universidad Católica Boliviana")
+                    .snippet("Cochabamba")
+
+                mapLibreMap.addMarker(markerOptions)
             }
         }
     }
 }
-
-

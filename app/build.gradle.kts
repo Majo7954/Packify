@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-kapt")
+    id("kotlin-kapt") // Necesario para Room y otros procesadores de anotaciones
 }
 
 android {
@@ -17,6 +17,15 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // --- Configuración de Room para exportar esquemas ---
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += mapOf(
+                    "room.schemaLocation" to "$projectDir/sampledata"
+                )
+            }
+        }
     }
 
     buildTypes {
@@ -28,13 +37,16 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
+
     buildFeatures {
         compose = true
     }
@@ -48,10 +60,17 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // --- Incluye sampledata como assets para los tests ---
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/sampledata")
+        }
+    }
 }
 
 dependencies {
-
+    // --- Jetpack Compose ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -61,15 +80,36 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
+    // --- Room Database ---
     implementation("androidx.room:room-runtime:2.6.1")
-    implementation(libs.play.services.maps)
-    kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
 
+    // --- Lifecycle / ViewModel / LiveData ---
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+
+    // --- Coroutines ---
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+    // --- Navegación y Mapas ---
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("org.maplibre.gl:android-sdk:11.6.1")
+    implementation(libs.play.services.maps)
 
+    // --- UI Clásica (RecyclerView y CardView) ---
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.cardview:cardview:1.0.0")
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
+    implementation("com.google.android.material:material:1.10.0")
+
+    // --- AGREGAR ESTA LÍNEA PARA VIEWMODEL EN COMPOSE ---
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+
+    // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permisos necesarios -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -12,18 +15,47 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
-        android:theme="@style/Theme.Deliveryapp">
+        android:theme="@style/Theme.Deliveryapp"
+        tools:targetApi="31">
+
+        <!-- SPLASH ACTIVITY - Pantalla de inicio (LAUNCHER) -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.screens.splash.SplashActivity"
             android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.Deliveryapp">
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-    </application>
 
+        <!-- MAIN ACTIVITY - Ya no es LAUNCHER -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Deliveryapp" />
+
+        <!-- PACKAGE LIST ACTIVITY -->
+        <activity
+            android:name=".ui.screens.packages.PackageListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- CREATE PACKAGE ACTIVITY -->
+        <activity
+            android:name=".ui.screens.packages.CreatePackageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+            android:parentActivityName=".ui.screens.packages.PackageListActivity" />
+
+        <!-- PACKAGE DETAIL ACTIVITY -->
+        <activity
+            android:name=".ui.screens.packages.PackageDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+            android:parentActivityName=".ui.screens.packages.PackageListActivity" />
+
+    </application>
 </manifest>
