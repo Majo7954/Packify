@@ -26,6 +26,8 @@ android {
                 )
             }
         }
+        manifestPlaceholders["mapsApiKey"] = "TU_API_KEY_AQUI"
+        buildConfigField("String", "MAPS_API_KEY", "\"TU_API_KEY_AQUI\"")
     }
 
     buildTypes {
@@ -35,6 +37,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+          buildConfigField("String", "MAPS_API_KEY", "\"TU_API_KEY_RELEASE_AQUI\"")
+        }
+        debug {
+          buildConfigField("String", "MAPS_API_KEY", "\"TU_API_KEY_DEBUG_AQUI\"")
         }
     }
 
@@ -49,6 +55,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -97,8 +104,13 @@ dependencies {
 
     // --- Navegación y Mapas ---
     implementation("androidx.navigation:navigation-compose:2.8.1")
-    implementation("org.maplibre.gl:android-sdk:11.6.1")
-    implementation(libs.play.services.maps)
+    //implementation("org.maplibre.gl:android-sdk:11.6.1")
+    //implementation(libs.play.services.maps)
+
+    // --- Google Maps ---
+    implementation("com.google.maps.android:maps-compose:2.14.0")
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 
     // --- UI Clásica (RecyclerView y CardView) ---
     implementation("androidx.recyclerview:recyclerview:1.3.2")

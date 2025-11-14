@@ -1,112 +1,107 @@
 package com.ucb.deliveryapp.viewmodel
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ucb.deliveryapp.repository.PackageRepository
-import com.ucb.deliveryapp.data.entity.Package // Asegúrate de importar tu clase Package
+import androidx.lifecycle.asLiveData
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.ucb.deliveryapp.repository.PackageRepository
+import com.ucb.deliveryapp.data.entity.Package
 
-/**
- * ViewModel para gestionar toda la lógica de negocio relacionada con los paquetes.
- *
- * @param repository El repositorio que proporciona acceso a los datos de los paquetes.
- */
 class PackageViewModel(private val repository: PackageRepository) : ViewModel() {
 
-    // LiveData para la lista de paquetes de un usuario. La UI observará esto.
-    private val _packages = MutableLiveData<List<Package>>()
-    val packages: LiveData<List<Package>> = _packages
+  // Cambiar de LiveData a StateFlow para Compose
+  private val _packages = MutableStateFlow<List<Package>>(emptyList())
+  val packages: StateFlow<List<Package>> = _packages.asStateFlow()
 
-    // LiveData para un solo paquete, usado en la pantalla de detalles.
-    private val _selectedPackage = MutableLiveData<Package?>()
-    val selectedPackage: LiveData<Package?> = _selectedPackage
+  private val _selectedPackage = MutableStateFlow<Package?>(null)
+  val selectedPackage: StateFlow<Package?> = _selectedPackage.asStateFlow()
 
-    /**
-     * Obtiene todos los paquetes asociados a un ID de usuario específico.
-     * Actualiza el LiveData `_packages`.
-     *
-     * @param userId El ID del usuario cuyos paquetes se quieren obtener.
-     */
-    fun loadUserPackages(userId: Int) {
-        viewModelScope.launch {
-            try {
-                // Llama a la función suspendida del repositorio
-                val userPackages = repository.getUserPackages(userId)
-                _packages.postValue(userPackages)
-            } catch (e: Exception) {
-                // Manejar el error, por ejemplo, mostrando un mensaje en la UI
-                // a través de otro LiveData.
-                _packages.postValue(emptyList()) // Informa a la UI que la lista está vacía
-            }
-        }
+  /**
+   * Obtiene todos los paquetes asociados a un ID de usuario específico.
+   */
+  fun loadUserPackages(userId: Int) {
+    viewModelScope.launch {
+      try {
+        val userPackages = repository.getUserPackages(userId)
+        _packages.value = userPackages
+      } catch (e: Exception) {
+        _packages.value = emptyList()
+      }
     }
+  }
 
-    /**
-     * Obtiene un paquete específico por su ID.
-     * Actualiza el LiveData `_selectedPackage`.
-     *
-     * @param packageId El ID del paquete a obtener.
-     */
-    fun loadPackageById(packageId: Int) {
-        viewModelScope.launch {
-            try {
-                val pkg = repository.getPackageById(packageId)
-                _selectedPackage.postValue(pkg)
-            } catch (e: Exception) {
-                _selectedPackage.postValue(null)
-            }
-        }
+  /**
+   * Obtiene un paquete específico por su ID.
+   */
+  fun loadPackageById(packageId: Int) {
+    viewModelScope.launch {
+      try {
+        val pkg = repository.getPackageById(packageId)
+        _selectedPackage.value = pkg
+      } catch (e: Exception) {
+        _selectedPackage.value = null
+      }
     }
+  }
 
-    /**
-     * Crea un nuevo paquete en la base de datos.
-     *
-     * @param pkg El objeto Package a insertar.
-     */
-    fun createPackage(pkg: Package) {
-        viewModelScope.launch {
-            repository.createPackage(pkg)
-            // Opcional: Recargar la lista de paquetes después de crear uno nuevo.
-            // loadUserPackages(pkg.userId)
-        }
+  /**
+   * Crea un nuevo paquete en la base de datos.
+   */
+  fun createPackage(pkg: Package) {
+    viewModelScope.launch {
+      try {
+        repository.createPackage(pkg)
+        // Recargar la lista después de crear
+        loadUserPackages(pkg.userId)
+      } catch (e: Exception) {
+        // Manejar error
+      }
     }
+  }
 
-    /**
-     * Actualiza el estado de un paquete.
-     *
-     * @param packageId El ID del paquete a actualizar.
-     * @param newStatus El nuevo estado para el paquete.
-     */
-    fun updatePackageStatus(packageId: Int, newStatus: String) {
-        viewModelScope.launch {
-            repository.updatePackageStatus(packageId, newStatus)
-            // Recarga los detalles del paquete para que la UI se actualice
-            loadPackageById(packageId)
-        }
+  /**
+   * Actualiza el estado de un paquete.
+   */
+  fun updatePackageStatus(packageId: Int, newStatus: String) {
+    viewModelScope.launch {
+      try {
+        repository.updatePackageStatus(packageId, newStatus)
+        loadPackageById(packageId)
+      } catch (e: Exception) {
+        // Manejar error
+      }
     }
+  }
 
-    /**
-     * Marca un paquete como entregado.
-     *
-     * @param packageId El ID del paquete a marcar como entregado.
-     */
-    fun markAsDelivered(packageId: Int) {
-        viewModelScope.launch {
-            repository.markAsDelivered(packageId)
-            loadPackageById(packageId)
-        }
+  /**
+   * Marca un paquete como entregado.
+   */
+  fun markAsDelivered(packageId: Int) {
+    viewModelScope.launch {
+      try {
+        repository.markAsDelivered(packageId)
+        loadPackageById(packageId)
+      } catch (e: Exception) {
+        // Manejar error
+      }
     }
+  }
 
-    /**
-     * Elimina un paquete de la base de datos.
-     *
-     * @param pkg El objeto Package a eliminar.
-     */
-    fun deletePackage(pkg: Package) {
-        viewModelScope.launch {
-            repository.deletePackage(pkg)
-        }
+  /**
+   * Elimina un paquete de la base de datos.
+   */
+  fun deletePackage(pkg: Package) {
+    viewModelScope.launch {
+      try {
+        repository.deletePackage(pkg)
+        // Recargar la lista después de eliminar
+        loadUserPackages(pkg.userId)
+      } catch (e: Exception) {
+        // Manejar error
+      }
     }
+  }
 }
