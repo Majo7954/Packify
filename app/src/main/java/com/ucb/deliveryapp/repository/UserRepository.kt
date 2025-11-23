@@ -7,11 +7,7 @@ import com.ucb.deliveryapp.data.entity.User
 
 class UserRepository(context: Context) {
 
-    private val db = Room.databaseBuilder(
-        context.applicationContext,
-        AppDatabase::class.java,
-        "delivery_db"
-    ).build()
+    private val db = AppDatabase.getDatabase(context.applicationContext)
 
     private val userDao = db.userDao()
 

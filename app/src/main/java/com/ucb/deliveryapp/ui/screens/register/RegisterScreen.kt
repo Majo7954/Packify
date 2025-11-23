@@ -14,10 +14,8 @@ import com.ucb.deliveryapp.viewmodel.UserViewModel
 import com.ucb.deliveryapp.viewmodel.UserViewModelFactory
 
 @Composable
-fun RegisterScreen(onRegisterSuccess: () -> Unit, viewModel: UserViewModel = viewModel()) {
-    val context = LocalContext.current
-    val factory = UserViewModelFactory(context.applicationContext as Application)
-    val viewModel: UserViewModel = viewModel(factory = factory)
+fun RegisterScreen(onRegisterSuccess: () -> Unit,
+                   viewModel: UserViewModel = viewModel()) {
 
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
