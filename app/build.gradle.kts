@@ -2,7 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-kapt") // Necesario para Room y otros procesadores de anotaciones
+    id("kotlin-kapt")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -18,14 +19,14 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // --- Configuración de Room para exportar esquemas ---
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += mapOf(
-                    "room.schemaLocation" to "$projectDir/sampledata"
-                )
-            }
-        }
+        // ELIMINAR la configuración de Room (ya no la necesitamos)
+        // javaCompileOptions {
+        //     annotationProcessorOptions {
+        //         arguments += mapOf(
+        //             "room.schemaLocation" to "$projectDir/sampledata"
+        //         )
+        //     }
+        // }
     }
 
     buildTypes {
@@ -61,15 +62,20 @@ android {
         }
     }
 
-    // --- Incluye sampledata como assets para los tests ---
-    sourceSets {
-        getByName("androidTest") {
-            assets.srcDirs("$projectDir/sampledata")
-        }
-    }
+    // ELIMINAR la configuración de sampledata (opcional, ya no necesaria para Room)
+    // sourceSets {
+    //     getByName("androidTest") {
+    //         assets.srcDirs("$projectDir/sampledata")
+    //     }
+    // }
 }
 
 dependencies {
+    // Firebase con BoM (más fácil de manejar versiones)
+    implementation(platform("com.google.firebase:firebase-bom:33.0.0"))
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-auth-ktx")
+
     // --- Jetpack Compose ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -80,11 +86,11 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    // --- Room Database ---
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
-    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    // --- ELIMINADO: Room Database (Ya no lo necesitamos) ---
+    // implementation("androidx.room:room-runtime:2.6.1")
+    // implementation("androidx.room:room-ktx:2.6.1")
+    // kapt("androidx.room:room-compiler:2.6.1")
+    // androidTestImplementation("androidx.room:room-testing:2.6.1")
 
     // --- Lifecycle / ViewModel / LiveData ---
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
@@ -94,6 +100,7 @@ dependencies {
     // --- Coroutines ---
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // --- Navegación y Mapas ---
     implementation("androidx.navigation:navigation-compose:2.8.1")
@@ -106,8 +113,14 @@ dependencies {
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
     implementation("com.google.android.material:material:1.10.0")
 
-    // --- AGREGAR ESTA LÍNEA PARA VIEWMODEL EN COMPOSE ---
+    // --- VIEWMODEL EN COMPOSE ---
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.datastore:datastore-core:1.0.0")
+
+    implementation("androidx.compose.material:material-icons-extended:1.5.4")
 
     // --- Testing ---
     testImplementation(libs.junit)

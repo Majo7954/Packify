@@ -40,8 +40,14 @@ class PackageAdapter(
         holder.tvRecipientName.text = pkg.recipientName
         holder.tvAddress.text = pkg.recipientAddress
 
+        // CORREGIDO: Usar Timestamp de Firebase
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        holder.tvEstimatedDate.text = "Entrega: ${dateFormat.format(Date(pkg.estimatedDeliveryDate))}"
+        val date = if (pkg.estimatedDeliveryDate.seconds > 0) {
+            Date(pkg.estimatedDeliveryDate.seconds * 1000)
+        } else {
+            Date()
+        }
+        holder.tvEstimatedDate.text = "Entrega: ${dateFormat.format(date)}"
 
         when (pkg.status) {
             PackageStatus.PENDING -> {

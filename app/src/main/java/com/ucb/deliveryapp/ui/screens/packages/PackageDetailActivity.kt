@@ -8,10 +8,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.ucb.deliveryapp.R
-import com.ucb.deliveryapp.data.db.AppDatabase
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackageStatus
-import com.ucb.deliveryapp.repository.PackageRepository
+import com.ucb.deliveryapp.data.repository.PackageRepositoryImpl
+import com.ucb.deliveryapp.util.Result
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,9 +33,9 @@ class PackageDetailActivity : AppCompatActivity() {
     private lateinit var btnMarkDelivered: Button
     private lateinit var btnDelete: Button
 
-    private lateinit var packageRepository: PackageRepository
+    private lateinit var packageRepository: PackageRepositoryImpl
     private var currentPackage: Package? = null
-    private var packageId: Int = 0
+    private var packageId: String = "" // CORREGIDO: Ahora es String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,15 +44,16 @@ class PackageDetailActivity : AppCompatActivity() {
         supportActionBar?.title = "Detalle del Paquete"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        packageId = intent.getIntExtra("PACKAGE_ID", 0)
-        if (packageId == 0) {
+        // CORREGIDO: Obtener packageId como String
+        packageId = intent.getStringExtra("PACKAGE_ID") ?: ""
+        if (packageId.isEmpty()) {
             Toast.makeText(this, "Error: No se encontró el paquete", Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
-        val database = AppDatabase.getDatabase(this)
-        packageRepository = PackageRepository(database.packageDao())
+        // CORREGIDO: Usar Firebase sin Room
+        packageRepository = PackageRepositoryImpl()
 
         initViews()
 
@@ -83,16 +84,22 @@ class PackageDetailActivity : AppCompatActivity() {
     private fun loadPackageDetails() {
         lifecycleScope.launch {
             try {
-                currentPackage = packageRepository.getPackageById(packageId)
-                currentPackage?.let { displayPackage(it) }
-                    ?: run {
+                val result = packageRepository.getPackageById(packageId)
+                when (result) {
+                    is Result.Success -> {
+                        currentPackage = result.data
+                        displayPackage(result.data)
+                    }
+                    is Result.Error -> {
                         Toast.makeText(
                             this@PackageDetailActivity,
-                            "Paquete no encontrado",
+                            "Paquete no encontrado: ${result.exception.message}",
                             Toast.LENGTH_LONG
                         ).show()
                         finish()
                     }
+                    else -> {}
+                }
             } catch (e: Exception) {
                 Toast.makeText(
                     this@PackageDetailActivity,
@@ -128,8 +135,20 @@ class PackageDetailActivity : AppCompatActivity() {
             else -> pkg.status
         }
 
-        tvEstimatedDate.text = dateFormat.format(Date(pkg.estimatedDeliveryDate))
-        tvCreatedAt.text = dateFormat.format(Date(pkg.createdAt))
+        // CORREGIDO: Usar Timestamp de Firebase
+        val estimatedDate = if (pkg.estimatedDeliveryDate.seconds > 0) {
+            Date(pkg.estimatedDeliveryDate.seconds * 1000)
+        } else {
+            Date()
+        }
+        val createdAt = if (pkg.createdAt.seconds > 0) {
+            Date(pkg.createdAt.seconds * 1000)
+        } else {
+            Date()
+        }
+
+        tvEstimatedDate.text = dateFormat.format(estimatedDate)
+        tvCreatedAt.text = dateFormat.format(createdAt)
         tvNotes.text = pkg.notes ?: "Sin notas"
 
         btnMarkDelivered.isEnabled = pkg.status != PackageStatus.DELIVERED
@@ -148,13 +167,25 @@ class PackageDetailActivity : AppCompatActivity() {
             .setTitle("Actualizar Estado")
             .setItems(estados) { _, which ->
                 lifecycleScope.launch {
-                    packageRepository.updatePackageStatus(packageId, values[which])
-                    Toast.makeText(
-                        this@PackageDetailActivity,
-                        "Estado actualizado",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    loadPackageDetails()
+                    val result = packageRepository.updatePackageStatus(packageId, values[which])
+                    when (result) {
+                        is Result.Success -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Estado actualizado",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            loadPackageDetails()
+                        }
+                        is Result.Error -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Error al actualizar estado: ${result.exception.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        else -> {}
+                    }
                 }
             }
             .show()
@@ -166,13 +197,25 @@ class PackageDetailActivity : AppCompatActivity() {
             .setMessage("¿Estás seguro de que quieres marcar este paquete como entregado?")
             .setPositiveButton("Sí, Entregado") { _, _ ->
                 lifecycleScope.launch {
-                    packageRepository.markAsDelivered(packageId)
-                    Toast.makeText(
-                        this@PackageDetailActivity,
-                        "Paquete marcado como entregado",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    loadPackageDetails()
+                    val result = packageRepository.markAsDelivered(packageId)
+                    when (result) {
+                        is Result.Success -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Paquete marcado como entregado",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            loadPackageDetails()
+                        }
+                        is Result.Error -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Error al marcar como entregado: ${result.exception.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        else -> {}
+                    }
                 }
             }
             .setNegativeButton("No", null)
@@ -185,14 +228,24 @@ class PackageDetailActivity : AppCompatActivity() {
             .setMessage("¿Realmente quieres eliminar este paquete? Esta acción no se puede deshacer.")
             .setPositiveButton("Eliminar") { _, _ ->
                 lifecycleScope.launch {
-                    currentPackage?.let {
-                        packageRepository.deletePackage(it)
-                        Toast.makeText(
-                            this@PackageDetailActivity,
-                            "Paquete eliminado",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        finish()
+                    val result = packageRepository.deletePackage(packageId)
+                    when (result) {
+                        is Result.Success -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Paquete eliminado",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            finish()
+                        }
+                        is Result.Error -> {
+                            Toast.makeText(
+                                this@PackageDetailActivity,
+                                "Error al eliminar: ${result.exception.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        else -> {}
                     }
                 }
             }

@@ -1,13 +1,28 @@
 package com.ucb.deliveryapp.data.entity
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.PropertyName
 
-@Entity(tableName = "users")
 data class User(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val username: String,
-    val email: String,
-    val password: String
-)
+    @DocumentId
+    val id: String = "",
+
+    @PropertyName("username")
+    val username: String = "",
+
+    @PropertyName("email")
+    val email: String = "",
+
+    @PropertyName("password")
+    val password: String = "",
+
+    @PropertyName("created_at")
+    val createdAt: Timestamp = Timestamp.now(),
+
+    @PropertyName("updated_at")
+    val updatedAt: Timestamp = Timestamp.now()
+) {
+    // Constructor sin parámetros para Firestore
+    constructor() : this("", "", "", "", Timestamp.now(), Timestamp.now())
+}

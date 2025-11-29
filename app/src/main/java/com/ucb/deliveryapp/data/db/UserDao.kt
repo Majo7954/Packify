@@ -1,5 +1,7 @@
 package com.ucb.deliveryapp.data.db
 
+// ROOM - COMENTADO POR MIGRACIÓN A FIREBASE
+/*
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -17,3 +19,4 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
     suspend fun findByEmail(email: String): User?
 }
+*/

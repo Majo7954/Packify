@@ -1,27 +1,56 @@
 package com.ucb.deliveryapp.data.entity
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.PropertyName
 
-@Entity(tableName = "packages")
 data class Package(
-    @PrimaryKey(autoGenerate = true)
-    val id: Int = 0,
+    @DocumentId
+    val id: String = "",
 
-    val trackingNumber: String,
-    val senderName: String,
-    val recipientName: String,
-    val recipientAddress: String,
-    val recipientPhone: String,
-    val weight: Double,
-    val status: String,
-    val priority: String,
-    val estimatedDeliveryDate: Long,
-    val createdAt: Long = System.currentTimeMillis(),
-    val deliveredAt: Long? = null,
+    @PropertyName("tracking_number")
+    val trackingNumber: String = "",
+
+    @PropertyName("sender_name")
+    val senderName: String = "",
+
+    @PropertyName("recipient_name")
+    val recipientName: String = "",
+
+    @PropertyName("recipient_address")
+    val recipientAddress: String = "",
+
+    @PropertyName("recipient_phone")
+    val recipientPhone: String = "",
+
+    @PropertyName("weight")
+    val weight: Double = 0.0,
+
+    @PropertyName("status")
+    val status: String = PackageStatus.PENDING,
+
+    @PropertyName("priority")
+    val priority: String = PackagePriority.NORMAL,
+
+    @PropertyName("estimated_delivery_date")
+    val estimatedDeliveryDate: Timestamp = Timestamp.now(),
+
+    @PropertyName("created_at")
+    val createdAt: Timestamp = Timestamp.now(),
+
+    @PropertyName("delivered_at")
+    val deliveredAt: Timestamp? = null,
+
+    @PropertyName("notes")
     val notes: String? = null,
-    val userId: Int
-)
+
+    @PropertyName("user_id")
+    val userId: String = ""
+) {
+    // Constructor sin parámetros para Firestore
+    constructor() : this("", "", "", "", "", "", 0.0, PackageStatus.PENDING,
+        PackagePriority.NORMAL, Timestamp.now(), Timestamp.now(), null, null, "")
+}
 
 object PackageStatus {
     const val PENDING = "pending"
