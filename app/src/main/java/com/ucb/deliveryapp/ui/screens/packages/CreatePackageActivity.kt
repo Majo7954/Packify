@@ -1,4 +1,3 @@
-// CreatePackageActivity.kt - CORREGIDO
 package com.ucb.deliveryapp.ui.screens.packages
 
 import android.app.Activity
@@ -9,11 +8,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
 import com.ucb.deliveryapp.R
-import com.ucb.deliveryapp.data.db.AppDatabase // CORREGIDO: era data.db.AppDatabase
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackagePriority
 import com.ucb.deliveryapp.data.entity.PackageStatus
-import com.ucb.deliveryapp.repository.PackageRepository // CORREGIDO: era repository.PackageRepository
+import com.ucb.deliveryapp.data.local.LoginDataStore
+import com.ucb.deliveryapp.data.repository.PackageRepositoryImpl
+import com.ucb.deliveryapp.util.Result
+import com.google.firebase.Timestamp
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -32,8 +33,9 @@ class CreatePackageActivity : AppCompatActivity() {
     private lateinit var spinnerPriority: Spinner
     private lateinit var btnCreatePackage: Button
 
-    private lateinit var packageRepository: PackageRepository
-    private var selectedDate: Long = 0
+    private lateinit var packageRepository: PackageRepositoryImpl
+    private lateinit var loginDataStore: LoginDataStore
+    private var selectedDate: Calendar = Calendar.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,8 +44,11 @@ class CreatePackageActivity : AppCompatActivity() {
         supportActionBar?.title = "Nuevo Paquete"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        val database = AppDatabase.getDatabase(this)
-        packageRepository = PackageRepository(database.packageDao())
+        // CORREGIDO: Usar Firebase sin Room
+        packageRepository = PackageRepositoryImpl()
+
+        // Inicializar LoginDataStore
+        loginDataStore = LoginDataStore(this)
 
         initViews()
         setupSpinner()
@@ -78,13 +83,11 @@ class CreatePackageActivity : AppCompatActivity() {
         DatePickerDialog(
             this,
             { _, year, month, day ->
-                val selectedCalendar = Calendar.getInstance()
-                selectedCalendar.set(year, month, day, 0, 0, 0)
-                selectedCalendar.set(Calendar.MILLISECOND, 0)
-                selectedDate = selectedCalendar.timeInMillis
+                selectedDate.set(year, month, day, 0, 0, 0)
+                selectedDate.set(Calendar.MILLISECOND, 0)
 
                 val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                tvEstimatedDate.text = dateFormat.format(Date(selectedDate))
+                tvEstimatedDate.text = dateFormat.format(selectedDate.time)
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -104,34 +107,50 @@ class CreatePackageActivity : AppCompatActivity() {
             else -> PackagePriority.NORMAL
         }
 
-        val newPackage = Package(
-            trackingNumber = etTrackingNumber.text.toString().trim(),
-            senderName = etSenderName.text.toString().trim(),
-            recipientName = etRecipientName.text.toString().trim(),
-            recipientAddress = etRecipientAddress.text.toString().trim(),
-            recipientPhone = etRecipientPhone.text.toString().trim(),
-            weight = etWeight.text.toString().toDoubleOrNull() ?: 0.0,
-            status = PackageStatus.PENDING,
-            priority = priority,
-            estimatedDeliveryDate = selectedDate,
-            notes = etNotes.text.toString().trim().ifEmpty { null },
-            userId = 1 // TODO: Reemplazar con el ID del usuario logueado
-        )
-
         lifecycleScope.launch {
             try {
-                packageRepository.createPackage(newPackage) // CORREGIDO: era createPackage
-                Toast.makeText(
-                    this@CreatePackageActivity,
-                    "Paquete creado exitosamente",
-                    Toast.LENGTH_SHORT
-                ).show()
-                setResult(Activity.RESULT_OK)
-                finish()
+                // Obtener userId dinámico del DataStore - CORREGIDO: Mantener como String
+                val userId = loginDataStore.getUserId() ?: "default_user"
+
+                val newPackage = Package(
+                    trackingNumber = etTrackingNumber.text.toString().trim(),
+                    senderName = etSenderName.text.toString().trim(),
+                    recipientName = etRecipientName.text.toString().trim(),
+                    recipientAddress = etRecipientAddress.text.toString().trim(),
+                    recipientPhone = etRecipientPhone.text.toString().trim(),
+                    weight = etWeight.text.toString().toDoubleOrNull() ?: 0.0,
+                    status = PackageStatus.PENDING,
+                    priority = priority,
+                    estimatedDeliveryDate = Timestamp(selectedDate.time), // CORREGIDO: Usar Timestamp
+                    notes = etNotes.text.toString().trim().ifEmpty { null },
+                    userId = userId // USERID STRING
+                )
+
+                val result = packageRepository.createPackage(newPackage)
+
+                when (result) {
+                    is Result.Success -> {
+                        Toast.makeText(
+                            this@CreatePackageActivity,
+                            "Paquete creado exitosamente",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        setResult(Activity.RESULT_OK)
+                        finish()
+                    }
+                    is Result.Error -> {
+                        Toast.makeText(
+                            this@CreatePackageActivity,
+                            "Error al crear el paquete: ${result.exception.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    else -> {}
+                }
             } catch (e: Exception) {
                 Toast.makeText(
                     this@CreatePackageActivity,
-                    "Error al crear el paquete: ${e.message}",
+                    "Error inesperado: ${e.message}",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -164,7 +183,7 @@ class CreatePackageActivity : AppCompatActivity() {
             etWeight.error = "Este campo es requerido"
             isValid = false
         }
-        if (selectedDate == 0L) {
+        if (tvEstimatedDate.text.toString() == "No seleccionada") {
             Toast.makeText(this, "Debe seleccionar una fecha de entrega", Toast.LENGTH_SHORT).show()
             isValid = false
         }

@@ -1,5 +1,7 @@
 package com.ucb.deliveryapp.data.db
 
+// ROOM - COMENTADO POR MIGRACIÓN A FIREBASE
+/*
 import androidx.room.*
 import com.ucb.deliveryapp.data.entity.Package
 
@@ -39,3 +41,4 @@ interface PackageDao {
     @Query("SELECT COUNT(*) FROM packages WHERE status = :status")
     suspend fun countPackagesByStatus(status: String): Int
 }
+*/

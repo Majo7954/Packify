@@ -1,7 +1,9 @@
 // HomeScreen.kt
 package com.ucb.deliveryapp.ui.screens.home
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,31 +17,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.ucb.deliveryapp.R
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackagePriority
 import com.ucb.deliveryapp.data.entity.PackageStatus
+import com.ucb.deliveryapp.data.local.LoginDataStore
 import com.ucb.deliveryapp.ui.screens.MapLibreView
 import com.ucb.deliveryapp.ui.screens.packages.PackageListActivity
 import com.ucb.deliveryapp.viewmodel.PackageViewModel
-import com.ucb.deliveryapp.viewmodel.getViewModelFactory
+import com.ucb.deliveryapp.viewmodel.getPackageViewModelFactory
+import com.google.firebase.Timestamp
 import java.util.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onNavigateToMenu: () -> Unit) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // LoginDataStore para obtener el userId
+    val loginDataStore = remember { LoginDataStore(context) }
+
     // Obtener el ViewModel
     val packageViewModel: PackageViewModel = viewModel(
-        factory = getViewModelFactory(context)
+        factory = getPackageViewModelFactory(context)
     )
 
     var origin by remember { mutableStateOf("") }
@@ -51,39 +59,112 @@ fun HomeScreen() {
 
     // Estado para el diálogo de confirmación
     var showConfirmationDialog by remember { mutableStateOf(false) }
+    var showConfirmationScreen by remember { mutableStateOf(false) }
 
     // Estado para el scroll
     val scrollState = rememberScrollState()
+
+    // Estados para permisos de ubicación
+    var locationPermissionGranted by remember { mutableStateOf(false) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        locationPermissionGranted = permissions.all { it.value }
+        if (!locationPermissionGranted) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Los permisos de ubicación son necesarios para una mejor experiencia"
+                )
+            }
+        }
+    }
+
+    // Estado para userId dinámico
+    var currentUserId by remember { mutableStateOf<String?>(null) }
+
+    // Obtener el userId del usuario logueado
+    LaunchedEffect(Unit) {
+        // Obtener userId
+        val userIdString = loginDataStore.getUserId()
+        currentUserId = userIdString ?: "default_user"
+
+        // Verificar permisos existentes
+        locationPermissionGranted = hasLocationPermission(context)
+
+        // Solicitar permisos si no se tienen
+        if (!locationPermissionGranted) {
+            locationPermissionLauncher.launch(arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ))
+        }
+    }
+
+    // MOSTRAR PANTALLA DE CONFIRMACIÓN SI ESTÁ ACTIVA - DEBE IR ANTES DEL SCAFFOLD
+    if (showConfirmationScreen) {
+        ConfirmationScreen(
+            onNavigateToPackages = {
+                val intent = Intent(context, PackageListActivity::class.java)
+                context.startActivity(intent)
+            }
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Página Principal") },
                 actions = {
-                    IconButton(onClick = {
-                        val intent = Intent(context, PackageListActivity::class.java)
-                        context.startActivity(intent)
-                    }) {
+                    IconButton(onClick = onNavigateToMenu) { // Cambiar aquí
                         Icon(
                             imageVector = Icons.Default.List,
-                            contentDescription = "Mis Paquetes"
+                            contentDescription = "Menú"
                         )
                     }
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         content = { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .verticalScroll(scrollState) // AGREGADO: Scroll vertical
+                    .verticalScroll(scrollState)
             ) {
                 Column(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.Top
                 ) {
+                    // Mostrar mensaje si no hay permisos de ubicación
+                    if (!locationPermissionGranted) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Advertencia",
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Se necesitan permisos de ubicación para mostrar el mapa correctamente",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -146,7 +227,7 @@ fun HomeScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Botón de confirmar envío - AHORA GUARDA EN LA BD
+                    // SOLO BOTÓN DE CONFIRMAR ENVÍO - QUITÉ EL BOTÓN "VER MIS PAQUETES"
                     Button(
                         onClick = {
                             if (validateInput(origin, destination, weight)) {
@@ -166,28 +247,6 @@ fun HomeScreen() {
                         Text("Confirmar Envío")
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Botón para ver mis paquetes
-                    OutlinedButton(
-                        onClick = {
-                            val intent = Intent(context, PackageListActivity::class.java)
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.List,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Ver mis Paquetes")
-                    }
-
                     // Espacio adicional al final para mejor scroll
                     Spacer(modifier = Modifier.height(16.dp))
                 }
@@ -195,7 +254,7 @@ fun HomeScreen() {
         }
     )
 
-    // Diálogo de confirmación
+    // Diálogo de confirmación de envío
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmationDialog = false },
@@ -207,29 +266,37 @@ fun HomeScreen() {
                 TextButton(
                     onClick = {
                         showConfirmationDialog = false
-                        // Crear y guardar el paquete en la base de datos
-                        val newPackage = createPackageFromForm(
-                            origin = origin,
-                            destination = destination,
-                            weight = weight,
-                            size = size,
-                            quotedPrice = quotedPrice,
-                            withinDepartment = withinDepartment
-                        )
 
-                        packageViewModel.createPackage(newPackage) // CORREGIDO: insertPackage
+                        // Usar userId String
+                        currentUserId?.let { userId ->
+                            // Crear y guardar el paquete en la base de datos
+                            val newPackage = createPackageFromForm(
+                                origin = origin,
+                                destination = destination,
+                                weight = weight,
+                                size = size,
+                                quotedPrice = quotedPrice,
+                                withinDepartment = withinDepartment,
+                                userId = userId
+                            )
 
-                        scope.launch {
-                            snackbarHostState.showSnackbar("✅ Paquete registrado exitosamente")
+                            packageViewModel.createPackage(newPackage)
+
+                            // MOSTRAR PANTALLA DE CONFIRMACIÓN
+                            showConfirmationScreen = true
+
+                            // Limpiar formulario después de guardar
+                            origin = ""
+                            destination = ""
+                            weight = ""
+                            size = ""
+                            quotedPrice = ""
+                            withinDepartment = false
+                        } ?: run {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("❌ Error: No se pudo identificar al usuario")
+                            }
                         }
-
-                        // Limpiar formulario después de guardar
-                        origin = ""
-                        destination = ""
-                        weight = ""
-                        size = ""
-                        quotedPrice = ""
-                        withinDepartment = false
                     }
                 ) {
                     Text("Confirmar")
@@ -246,7 +313,18 @@ fun HomeScreen() {
     }
 }
 
-// NUEVO: Composable para campos editables (versión simplificada)
+// Función para verificar permisos de ubicación
+private fun hasLocationPermission(context: android.content.Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditFieldCard(
@@ -273,13 +351,10 @@ private fun EditFieldCard(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Versión simplificada sin KeyboardOptions
                 OutlinedTextField(
                     value = value,
                     onValueChange = { newValue ->
-                        // Validación básica para campos numéricos
                         if (isNumber) {
-                            // Permite solo números y punto decimal
                             if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
                                 onValueChange(newValue)
                             }
@@ -316,20 +391,19 @@ private fun EditFieldCard(
     }
 }
 
-// Función para crear un Package desde el formulario
+// Función para crear Package con userId String y Timestamp
 private fun createPackageFromForm(
     origin: String,
     destination: String,
     weight: String,
     size: String,
     quotedPrice: String,
-    withinDepartment: Boolean
+    withinDepartment: Boolean,
+    userId: String
 ): Package {
 
-    // Determinar prioridad basada en el tipo de envío
     val priority = if (withinDepartment) PackagePriority.NORMAL else PackagePriority.EXPRESS
 
-    // Crear notas combinando la información
     val notes = buildString {
         append("Origen: $origin")
         append("\nDestino: $destination")
@@ -344,16 +418,16 @@ private fun createPackageFromForm(
 
     return Package(
         trackingNumber = generateTrackingNumber(),
-        senderName = "Usuario Actual", // Puedes cambiar esto según tu sistema
+        senderName = "Usuario Actual",
         recipientName = "Destinatario en $destination",
         recipientAddress = destination,
         recipientPhone = "Por definir",
         weight = weight.toDouble(),
         status = PackageStatus.PENDING,
         priority = priority,
-        estimatedDeliveryDate = System.currentTimeMillis() + getEstimatedDeliveryDays(withinDepartment) * 24 * 60 * 60 * 1000,
+        estimatedDeliveryDate = Timestamp.now(),
         notes = notes,
-        userId = 1 // Cambia esto según tu sistema de usuarios
+        userId = userId
     )
 }
 
@@ -362,11 +436,6 @@ private fun generateTrackingNumber(): String {
     val timestamp = System.currentTimeMillis().toString().takeLast(8)
     val random = (1000..9999).random()
     return "UCB${timestamp}${random}"
-}
-
-// Calcular días estimados de entrega
-private fun getEstimatedDeliveryDays(withinDepartment: Boolean): Long {
-    return if (withinDepartment) 3 else 7
 }
 
 // Validar campos obligatorios
