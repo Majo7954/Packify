@@ -3,6 +3,7 @@ package com.ucb.deliveryapp.ui.screens
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,10 +12,15 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ucb.deliveryapp.R
+import java.text.SimpleDateFormat
+import java.util.*
 
 class PrivacyPolicyActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,13 +38,30 @@ fun PrivacyPolicyScreen(onBackPressed: () -> Unit) {
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Política de Privacidad") },
+            // ✅ TOP BAR CON IMAGEN IDÉNTICA AL MENÚ
+            TopAppBar(
+                title = {
+                    Image(
+                        painter = painterResource(id = R.drawable.nombre),
+                        contentDescription = "Logo del menú",
+                        modifier = Modifier
+                            .height(32.dp)
+                            .widthIn(max = 200.dp)
+                            .padding(start = 92.dp)
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackPressed) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = Color.White
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF00A76D) // ✅ MISMO COLOR VERDE QUE LA APP
+                )
             )
         }
     ) { paddingValues ->
@@ -118,7 +141,7 @@ fun PrivacyPolicyContent() {
         )
 
         Text(
-            "Última actualización: ${java.time.LocalDate.now()}",
+            "Última actualización: ${getCurrentDate()}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -128,16 +151,20 @@ fun PrivacyPolicyContent() {
 @Composable
 fun PrivacySection(title: String, content: String) {
     Card(
+        modifier = Modifier
+            .fillMaxWidth(), // ✅ TODOS LOS CUADROS OCUPAN ANCHO COMPLETO
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .fillMaxWidth() // ✅ ANCHO COMPLETO
+                .padding(16.dp)
         ) {
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = Color.Black // ✅ TÍTULOS EN NEGRO (NO MORADO)
             )
             Spacer(Modifier.height(8.dp))
             Text(
@@ -147,4 +174,10 @@ fun PrivacySection(title: String, content: String) {
             )
         }
     }
+}
+
+// ✅ FUNCIÓN COMPATIBLE CON API 24+
+private fun getCurrentDate(): String {
+    val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+    return sdf.format(Date())
 }
