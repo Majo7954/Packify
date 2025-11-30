@@ -73,29 +73,35 @@ fun LoginScreen(
     // Efecto para mostrar errores con Snackbar y resaltar campos
     LaunchedEffect(errorState) {
         errorState?.let { errorMessage ->
-            // Determinar qué campo resaltar basado en el mensaje de error
-            when {
-                errorMessage.contains("correo", ignoreCase = true) ||
-                        errorMessage.contains("email", ignoreCase = true) -> {
-                    emailError = true
+            try {
+                // Determinar qué campo resaltar basado en el mensaje de error
+                when {
+                    errorMessage.contains("correo", ignoreCase = true) ||
+                            errorMessage.contains("email", ignoreCase = true) -> {
+                        emailError = true
+                    }
+                    errorMessage.contains("contraseña", ignoreCase = true) ||
+                            errorMessage.contains("password", ignoreCase = true) -> {
+                        passwordError = true
+                    }
+                    else -> {
+                        emailError = true
+                        passwordError = true
+                    }
                 }
-                errorMessage.contains("contraseña", ignoreCase = true) ||
-                        errorMessage.contains("password", ignoreCase = true) -> {
-                    passwordError = true
-                }
-                else -> {
-                    emailError = true
-                    passwordError = true
-                }
-            }
 
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar(
-                    message = errorMessage,
-                    duration = SnackbarDuration.Short
-                )
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = errorMessage.take(100), // ✅ LIMITA longitud para evitar crashes
+                        duration = SnackbarDuration.Short
+                    )
+                }
+
                 // Limpiar el error después de mostrarlo
                 viewModel.clearError()
+            } catch (e: Exception) {
+                // ✅ EVITA CRASHES en caso de error inesperado
+                e.printStackTrace()
             }
         }
     }
@@ -280,7 +286,48 @@ fun LoginScreen(
                 )
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // ✅ TÉRMINOS Y CONDICIONES - MÁS DESTACADO (OBLIGATORIO PLAY STORE)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.small)
+                    .border(1.dp, Color.White, MaterialTheme.shapes.small)
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .clickable {
+                        val intent = Intent(context, PrivacyPolicyActivity::class.java)
+                        context.startActivity(intent)
+                    }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Texto "Al iniciar sesión aceptas nuestros" ARRIBA
+                    Text(
+                        text = "Al iniciar sesión aceptas nuestros",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Texto "Términos y Política de Privacidad" ABAJO
+                    Text(
+                        text = "Términos y Política de Privacidad",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             // Botón de login SIEMPRE AMARILLO
             Button(
@@ -309,6 +356,15 @@ fun LoginScreen(
                                 )
                             }
                             emailError = true
+                        }
+                        password.length < 6 -> { // ✅ MÍNIMO 6 CARACTERES (SEGURIDAD)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "La contraseña debe tener al menos 6 caracteres",
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                            passwordError = true
                         }
                         else -> {
                             viewModel.login(email, password)
@@ -364,20 +420,6 @@ fun LoginScreen(
                         enabled = !loadingState,
                         onClick = { onNavigateToRegister() }
                     )
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // Enlace a Política de Privacidad
-            Text(
-                text = "Política de Privacidad",
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier
-                    .clickable {
-                        val intent = Intent(context, PrivacyPolicyActivity::class.java)
-                        context.startActivity(intent)
-                    }
             )
         }
     }
