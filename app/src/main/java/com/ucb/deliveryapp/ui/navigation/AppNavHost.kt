@@ -1,4 +1,4 @@
-// kotlin+java/com/ucb/deliveryapp/ui/navigation/AppNavHost.kt
+// AppNavHost.kt
 package com.ucb.deliveryapp.ui.navigation
 
 import androidx.compose.runtime.Composable
@@ -8,9 +8,12 @@ import androidx.navigation.compose.composable
 import com.ucb.deliveryapp.ui.screens.home.HomeScreen
 import com.ucb.deliveryapp.ui.screens.login.LoginScreen
 import com.ucb.deliveryapp.ui.screens.menu.MenuScreen
+import com.ucb.deliveryapp.ui.screens.packages.PackageListScreen
 import com.ucb.deliveryapp.ui.screens.register.RegisterScreen
 import com.ucb.deliveryapp.ui.screens.support.SupportScreen
 import com.ucb.deliveryapp.ui.screens.profile.ProfileScreen
+import com.ucb.deliveryapp.ui.screens.home.CreatePackageComposeScreen
+import com.ucb.deliveryapp.ui.screens.packages.PackageDetailScreen
 
 object Routes {
     const val LOGIN = "login"
@@ -19,6 +22,8 @@ object Routes {
     const val MENU = "menu"
     const val SUPPORT = "support"
     const val PROFILE = "profile"
+    const val PACKAGES = "packages"
+    const val CREATE_PACKAGE = "create_package" // NUEVA RUTA AGREGADA
 }
 
 @Composable
@@ -50,7 +55,8 @@ fun AppNavHost(navController: NavHostController) {
         }
         composable(Routes.HOME) {
             HomeScreen(
-                onNavigateToMenu = { navController.navigate(Routes.MENU) }
+                onNavigateToMenu = { navController.navigate(Routes.MENU) },
+                navController = navController // ✅ Agregar este parámetro
             )
         }
         composable(Routes.MENU) {
@@ -61,6 +67,22 @@ fun AppNavHost(navController: NavHostController) {
         }
         composable(Routes.PROFILE) {
             ProfileScreen(navController = navController)
+        }
+        composable(Routes.PACKAGES) {
+            PackageListScreen(navController = navController)
+        }
+        composable(Routes.CREATE_PACKAGE) {
+            CreatePackageComposeScreen(
+                onNavigateToMenu = { navController.navigate(Routes.MENU) },
+                navController = navController // ✅ AGREGAR este parámetro
+            )
+        }
+        composable("package_detail/{packageId}") { backStackEntry ->
+            val packageId = backStackEntry.arguments?.getString("packageId") ?: ""
+            PackageDetailScreen(
+                navController = navController,
+                packageId = packageId
+            )
         }
     }
 }

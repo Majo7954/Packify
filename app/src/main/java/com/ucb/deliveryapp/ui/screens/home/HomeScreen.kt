@@ -27,20 +27,18 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.ucb.deliveryapp.R
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackagePriority
 import com.ucb.deliveryapp.data.entity.PackageStatus
 import com.ucb.deliveryapp.data.local.LoginDataStore
 import com.ucb.deliveryapp.ui.screens.MapboxMapView
 import com.mapbox.geojson.Point
-import com.ucb.deliveryapp.ui.screens.packages.PackageListActivity
+import androidx.navigation.NavController
 import com.ucb.deliveryapp.viewmodel.PackageViewModel
 import com.ucb.deliveryapp.viewmodel.getPackageViewModelFactory
 import com.google.firebase.Timestamp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,32 +47,28 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // LoginDataStore para obtener el userId
     val loginDataStore = remember { LoginDataStore(context) }
+    val packageViewModel: PackageViewModel = viewModel(factory = getPackageViewModelFactory(context))
 
-    // Obtener el ViewModel
-    val packageViewModel: PackageViewModel = viewModel(
-        factory = getPackageViewModelFactory(context)
-    )
-
-    var origin by remember { mutableStateOf("") }      // texto ingresado por usuario
-    var destination by remember { mutableStateOf("") } // texto ingresado por usuario
+    var origin by remember { mutableStateOf("") }
+    var destination by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("") }
     var quotedPrice by remember { mutableStateOf("") }
     var withinDepartment by remember { mutableStateOf(false) }
-
-    // Estado para el diálogo de confirmación
     var showConfirmationDialog by remember { mutableStateOf(false) }
     var showConfirmationScreen by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
-
-    // Estado para el scroll
     val scrollState = rememberScrollState()
 
     // ✅ MEJOR MANEJO DE PERMISOS PARA PLAY STORE
     var locationPermissionGranted by remember { mutableStateOf(false) }
     var shouldShowPermissionRationale by remember { mutableStateOf(false) }
+
+    // ✅ ESTADOS PARA MAPBOX - RUTA Y COORDENADAS
+    var routeInfoText by remember { mutableStateOf<String?>(null) }
+    var originPoint by remember { mutableStateOf<Point?>(null) }
+    var destinationPoint by remember { mutableStateOf<Point?>(null) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -88,24 +82,17 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     }
 
-    // Estado para userId dinámico
     var currentUserId by remember { mutableStateOf<String?>(null) }
 
-    // Estados para ruta / ETA
-    var routeInfoText by remember { mutableStateOf<String?>(null) }
-    var originPoint by remember { mutableStateOf<Point?>(null) }
-    var destinationPoint by remember { mutableStateOf<Point?>(null) }
-
-    // ✅ EFECTO MEJORADO PARA PERMISOS
+    // ✅ EFECTO MEJORADO PARA PERMISOS Y DATOS INICIALES
     LaunchedEffect(Unit) {
-        // Obtener userId
         currentUserId = loginDataStore.getUserId() ?: "default_user"
 
-        // Verificar permisos existentes
+        // Verificar permisos actuales
         locationPermissionGranted = hasLocationPermission(context)
 
-        // Solicitar permisos si no se tienen
         if (!locationPermissionGranted) {
+            // Pedir permisos solo si no los tenemos
             locationPermissionLauncher.launch(arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
@@ -113,13 +100,11 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     }
 
-    // MOSTRAR PANTALLA DE CONFIRMACIÓN SI ESTÁ ACTIVA - DEBE IR ANTES DEL SCAFFOLD
     if (showConfirmationScreen) {
         ConfirmationScreen(
             navController = navController,
             onNavigateToPackages = {
-                val intent = Intent(context, PackageListActivity::class.java)
-                context.startActivity(intent)
+                // Navegación manejada en ConfirmationScreen
             }
         )
         return
@@ -138,7 +123,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                 actions = {
                     IconButton(onClick = onNavigateToMenu) {
                         Icon(
-                            imageVector = Icons.Default.List,
+                            Icons.Default.List,
                             contentDescription = "Menú",
                             tint = Color.White
                         )
@@ -234,7 +219,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         }
                     }
 
-                    // ✅ MAPA CON MAPBOX Y MANEJO DE FALLBACK
+                    // ✅ MAPA CON MAPBOX - REEMPLAZANDO MAPLIBRE
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -242,7 +227,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             .clip(RoundedCornerShape(12.dp))
                     ) {
                         if (locationPermissionGranted) {
-                            // MapboxMapView toma origin/destination como Points; onRouteInfo recibe ETA y distancia
+                            // ✅ USANDO MAPBOX EN LUGAR DE MAPLIBRE
                             MapboxMapView(
                                 modifier = Modifier.fillMaxSize(),
                                 origin = originPoint,
@@ -282,20 +267,20 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         }
                     }
 
-                    // Mostrar info de ruta si existe
+                    // ✅ MOSTRAR INFORMACIÓN DE RUTA SI ESTÁ DISPONIBLE
                     routeInfoText?.let { info ->
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = info,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(start = 4.dp),
-                            color = Color.Black // ✅ TEXTO NEGRO
+                            color = Color.Black,
+                            modifier = Modifier.padding(start = 4.dp)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ✅ CAMPOS DEL FORMULARIO CON NUEVOS COLORES
+                    // ✅ CAMPOS DE ORIGEN Y DESTINO CON FUNCIONALIDAD DE MAPBOX
                     EditFieldCard(
                         label = "Lugar de origen (lat,lng o lng,lat)",
                         value = origin,
@@ -318,12 +303,12 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         }
                     )
 
-                    // Botón para convertir los strings a Points y pedir ruta
+                    // ✅ BOTONES PARA CALCULAR RUTA Y LIMPIAR
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = {
-                                // Intentar parsear los campos a coordenadas
+                                // Intentar parsear los campos a coordenadas para MapBox
                                 val parsedOrigin = parseCoordinatesFromString(origin)
                                 val parsedDest = parseCoordinatesFromString(destination)
                                 if (parsedOrigin != null && parsedDest != null) {
@@ -331,7 +316,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                                     destinationPoint = parsedDest
                                 } else {
                                     scope.launch {
-                                        snackbarHostState.showSnackbar("No se pudieron parsear las coordenadas. Usa formato 'lat,lng' o 'lng,lat' (ej: -16.5,-68.1).")
+                                        snackbarHostState.showSnackbar("❌ No se pudieron parsear las coordenadas. Usa formato 'lat,lng' o 'lng,lat' (ej: -16.5,-68.1).")
                                     }
                                 }
                             },
@@ -345,7 +330,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         Spacer(Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = {
-                                // limpiar
+                                // limpiar coordenadas
                                 origin = ""
                                 destination = ""
                                 originPoint = null
@@ -354,35 +339,18 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Limpiar")
+                            Text("Limpiar", color = Color(0xFF00A76D))
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Resto de campos editables
-                    EditFieldCard(
-                        label = "Peso (kg)",
-                        value = weight,
-                        onValueChange = { weight = it },
-                        onClear = { weight = "" },
-                        isNumber = true
-                    )
+                    // ✅ CAMPOS DEL FORMULARIO CON NUEVOS COLORES
+                    EditFieldCard("Peso (kg)", weight, { weight = it }, { weight = "" }, true)
                     Spacer(modifier = Modifier.height(8.dp))
-                    EditFieldCard(
-                        label = "Tamaño",
-                        value = size,
-                        onValueChange = { size = it },
-                        onClear = { size = "" }
-                    )
+                    EditFieldCard("Tamaño", size, { size = it }, { size = "" })
                     Spacer(modifier = Modifier.height(8.dp))
-                    EditFieldCard(
-                        label = "Precio Cotizado",
-                        value = quotedPrice,
-                        onValueChange = { quotedPrice = it },
-                        onClear = { quotedPrice = "" },
-                        isNumber = true
-                    )
+                    EditFieldCard("Precio Cotizado", quotedPrice, { quotedPrice = it }, { quotedPrice = "" }, true)
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -456,7 +424,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     )
 
-    // ✅ DIALOGO DE CONFIRMACIÓN MEJORADO
+    // ✅ DIALOGO DE CONFIRMACIÓN
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -473,6 +441,14 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         "Origen: $origin\nDestino: $destination\nPeso: $weight kg",
                         style = MaterialTheme.typography.bodySmall
                     )
+                    routeInfoText?.let { info ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Ruta: $info",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF00A76D)
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -531,16 +507,29 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
     }
 }
 
-// Función para verificar permisos de ubicación
 private fun hasLocationPermission(context: android.content.Context): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.ACCESS_FINE_LOCATION
-    ) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+    return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+}
+
+// ✅ FUNCIÓN PARA PARSEAR COORDENADAS DESDE STRING (PARA MAPBOX)
+private fun parseCoordinatesFromString(s: String?): Point? {
+    if (s.isNullOrBlank()) return null
+    val cleaned = s.trim().replace("\\s+".toRegex(), "")
+    val parts = cleaned.split(",")
+    if (parts.size < 2) return null
+    val a = parts[0].toDoubleOrNull() ?: return null
+    val b = parts[1].toDoubleOrNull() ?: return null
+
+    // if a in [-90,90] -> likely latitude, so order is lat,lng
+    return if (a in -90.0..90.0 && b in -180.0..180.0) {
+        Point.fromLngLat(b, a) // Point expects (lng, lat)
+    } else if (a in -180.0..180.0 && b in -90.0..90.0) {
+        Point.fromLngLat(a, b)
+    } else {
+        // ambos válidos como long/lat ranges, fallback assume lat,lng
+        Point.fromLngLat(b, a)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -560,18 +549,14 @@ private fun EditFieldCard(
             containerColor = Color(0xFF80D4B6) // ✅ VERDE CLARITO SOLICITADO
         )
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Black // ✅ TEXTO NEGRO
             )
             Spacer(Modifier.height(8.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = value,
                     onValueChange = { newValue ->
@@ -583,9 +568,7 @@ private fun EditFieldCard(
                             onValueChange(newValue)
                         }
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
                             "Ingresa $label",
@@ -619,37 +602,13 @@ private fun EditFieldCard(
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "Limpiar $label",
+                            contentDescription = "Limpiar",
                             tint = Color.Black // ✅ ICONO NEGRO
                         )
                     }
                 }
             }
         }
-    }
-}
-
-/* ---------------------------
-   Helper: parsear coordenadas
-   - acepta "lat,lng" o "lng,lat"
-   - intenta detectar orden por rangos válidos
-   --------------------------- */
-private fun parseCoordinatesFromString(s: String?): Point? {
-    if (s.isNullOrBlank()) return null
-    val cleaned = s.trim().replace("\\s+".toRegex(), "")
-    val parts = cleaned.split(",")
-    if (parts.size < 2) return null
-    val a = parts[0].toDoubleOrNull() ?: return null
-    val b = parts[1].toDoubleOrNull() ?: return null
-
-    // if a in [-90,90] -> likely latitude, so order is lat,lng
-    return if (a in -90.0..90.0 && b in -180.0..180.0) {
-        Point.fromLngLat(b, a) // Point expects (lng, lat)
-    } else if (a in -180.0..180.0 && b in -90.0..90.0) {
-        Point.fromLngLat(a, b)
-    } else {
-        // ambos válidos como long/lat ranges, fallback assume lat,lng
-        Point.fromLngLat(b, a)
     }
 }
 
@@ -702,7 +661,6 @@ private fun createPackageFromForm(
     )
 }
 
-// Generar número de seguimiento único
 private fun generateTrackingNumber(): String {
     val timestamp = System.currentTimeMillis().toString().takeLast(8)
     val random = (1000..9999).random()
@@ -720,15 +678,8 @@ fun CreatePackageComposeScreen(
     )
 }
 
-// Validar campos obligatorios
-private fun validateInput(
-    origin: String,
-    destination: String,
-    weight: String
-): Boolean {
-    return origin.isNotBlank() &&
-            destination.isNotBlank() &&
-            weight.isNotBlank() &&
+private fun validateInput(origin: String, destination: String, weight: String): Boolean {
+    return origin.isNotBlank() && destination.isNotBlank() && weight.isNotBlank() &&
             try {
                 weight.toDouble() > 0
             } catch (e: NumberFormatException) {

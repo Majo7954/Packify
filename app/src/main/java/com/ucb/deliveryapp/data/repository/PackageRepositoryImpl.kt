@@ -1,127 +1,123 @@
+// kotlin+java/com/ucb/deliveryapp/data/repository/PackageRepositoryImpl.kt
 package com.ucb.deliveryapp.data.repository
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.ucb.deliveryapp.data.entity.Package
-import com.ucb.deliveryapp.domain.repository.PackageRepository
-import com.ucb.deliveryapp.util.Result
 import kotlinx.coroutines.tasks.await
 
-class PackageRepositoryImpl : PackageRepository {
+class PackageRepositoryImpl : com.ucb.deliveryapp.domain.repository.PackageRepository {
 
     private val db: FirebaseFirestore = Firebase.firestore
     private val packagesCollection = db.collection("packages")
 
-    override suspend fun createPackage(pkg: Package): Result<String> {
+    override suspend fun createPackage(pkg: com.ucb.deliveryapp.data.entity.Package): com.ucb.deliveryapp.util.Result<String> {
         return try {
-            // Generar ID automático de Firestore
             val documentRef = packagesCollection.document()
             val packageWithId = pkg.copy(id = documentRef.id)
-
             documentRef.set(packageWithId).await()
-            Result.Success(documentRef.id)
+            com.ucb.deliveryapp.util.Result.Success(documentRef.id)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun updatePackage(pkg: Package): Result<Boolean> {
+    override suspend fun updatePackage(pkg: com.ucb.deliveryapp.data.entity.Package): com.ucb.deliveryapp.util.Result<Boolean> {
         return try {
             packagesCollection.document(pkg.id).set(pkg).await()
-            Result.Success(true)
+            com.ucb.deliveryapp.util.Result.Success(true)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun deletePackage(packageId: String): Result<Boolean> {
+    override suspend fun deletePackage(packageId: String): com.ucb.deliveryapp.util.Result<Boolean> {
         return try {
             packagesCollection.document(packageId).delete().await()
-            Result.Success(true)
+            com.ucb.deliveryapp.util.Result.Success(true)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun getAllPackages(): Result<List<Package>> {
+    override suspend fun getAllPackages(): com.ucb.deliveryapp.util.Result<List<com.ucb.deliveryapp.data.entity.Package>> {
         return try {
             val packages = packagesCollection
-                .orderBy("createdAt") // CORREGIDO: "createdAt" no "created_at"
+                .orderBy("createdAt") // camelCase
                 .get()
                 .await()
-                .toObjects(Package::class.java)
-            Result.Success(packages)
+                .toObjects(com.ucb.deliveryapp.data.entity.Package::class.java)
+            com.ucb.deliveryapp.util.Result.Success(packages)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun getUserPackages(userId: String): Result<List<Package>> {
+    override suspend fun getUserPackages(userId: String): com.ucb.deliveryapp.util.Result<List<com.ucb.deliveryapp.data.entity.Package>> {
         return try {
             val packages = packagesCollection
-                .whereEqualTo("userId", userId) // CORREGIDO: "userId" no "user_id"
-                .orderBy("createdAt") // CORREGIDO: "createdAt" no "created_at"
+                .whereEqualTo("userId", userId) // camelCase
+                .orderBy("createdAt") // camelCase
                 .get()
                 .await()
-                .toObjects(Package::class.java)
-            Result.Success(packages)
+                .toObjects(com.ucb.deliveryapp.data.entity.Package::class.java)
+            com.ucb.deliveryapp.util.Result.Success(packages)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun getPackageById(packageId: String): Result<Package> {
+    override suspend fun getPackageById(packageId: String): com.ucb.deliveryapp.util.Result<com.ucb.deliveryapp.data.entity.Package> {
         return try {
             val packageDoc = packagesCollection.document(packageId).get().await()
-            val packageObj = packageDoc.toObject(Package::class.java)
-            if (packageObj != null) Result.Success(packageObj)
-            else Result.Error(Exception("Package not found"))
+            val packageObj = packageDoc.toObject(com.ucb.deliveryapp.data.entity.Package::class.java)
+            if (packageObj != null) com.ucb.deliveryapp.util.Result.Success(packageObj)
+            else com.ucb.deliveryapp.util.Result.Error(Exception("Package not found"))
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun trackPackage(trackingNumber: String): Result<Package> {
+    override suspend fun trackPackage(trackingNumber: String): com.ucb.deliveryapp.util.Result<com.ucb.deliveryapp.data.entity.Package> {
         return try {
             val query = packagesCollection
-                .whereEqualTo("trackingNumber", trackingNumber) // CORREGIDO: "trackingNumber" no "tracking_number"
+                .whereEqualTo("trackingNumber", trackingNumber) // camelCase
                 .get()
                 .await()
 
             if (query.documents.isNotEmpty()) {
-                val packageObj = query.documents[0].toObject(Package::class.java)
-                if (packageObj != null) Result.Success(packageObj)
-                else Result.Error(Exception("Package not found"))
+                val packageObj = query.documents[0].toObject(com.ucb.deliveryapp.data.entity.Package::class.java)
+                if (packageObj != null) com.ucb.deliveryapp.util.Result.Success(packageObj)
+                else com.ucb.deliveryapp.util.Result.Error(Exception("Package not found"))
             } else {
-                Result.Error(Exception("Package not found"))
+                com.ucb.deliveryapp.util.Result.Error(Exception("Package not found"))
             }
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun updatePackageStatus(packageId: String, newStatus: String): Result<Boolean> {
+    override suspend fun updatePackageStatus(packageId: String, newStatus: String): com.ucb.deliveryapp.util.Result<Boolean> {
         return try {
             packagesCollection.document(packageId)
                 .update("status", newStatus)
                 .await()
-            Result.Success(true)
+            com.ucb.deliveryapp.util.Result.Success(true)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 
-    override suspend fun markAsDelivered(packageId: String): Result<Boolean> {
+    override suspend fun markAsDelivered(packageId: String): com.ucb.deliveryapp.util.Result<Boolean> {
         return try {
             val updates = mapOf(
                 "status" to "delivered",
-                "deliveredAt" to com.google.firebase.Timestamp.now() // CORREGIDO: "deliveredAt" no "delivered_at"
+                "deliveredAt" to com.google.firebase.Timestamp.now() // camelCase
             )
             packagesCollection.document(packageId).update(updates).await()
-            Result.Success(true)
+            com.ucb.deliveryapp.util.Result.Success(true)
         } catch (e: Exception) {
-            Result.Error(e)
+            com.ucb.deliveryapp.util.Result.Error(e)
         }
     }
 }

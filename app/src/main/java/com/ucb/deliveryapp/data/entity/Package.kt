@@ -1,51 +1,25 @@
+// kotlin+java/com/ucb/deliveryapp/data/entity/Package.kt
 package com.ucb.deliveryapp.data.entity
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
-import com.google.firebase.firestore.PropertyName
 
 data class Package(
     @DocumentId
     val id: String = "",
-
-    @PropertyName("tracking_number")
-    val trackingNumber: String = "",
-
-    @PropertyName("sender_name")
-    val senderName: String = "",
-
-    @PropertyName("recipient_name")
-    val recipientName: String = "",
-
-    @PropertyName("recipient_address")
-    val recipientAddress: String = "",
-
-    @PropertyName("recipient_phone")
-    val recipientPhone: String = "",
-
-    @PropertyName("weight")
+    val trackingNumber: String = "", // CAMBIAR: tracking_number → trackingNumber
+    val senderName: String = "", // CAMBIAR: sender_name → senderName
+    val recipientName: String = "", // CAMBIAR: recipient_name → recipientName
+    val recipientAddress: String = "", // CAMBIAR: recipient_address → recipientAddress
+    val recipientPhone: String = "", // CAMBIAR: recipient_phone → recipientPhone
     val weight: Double = 0.0,
-
-    @PropertyName("status")
     val status: String = PackageStatus.PENDING,
-
-    @PropertyName("priority")
     val priority: String = PackagePriority.NORMAL,
-
-    @PropertyName("estimated_delivery_date")
-    val estimatedDeliveryDate: Timestamp = Timestamp.now(),
-
-    @PropertyName("created_at")
-    val createdAt: Timestamp = Timestamp.now(),
-
-    @PropertyName("delivered_at")
-    val deliveredAt: Timestamp? = null,
-
-    @PropertyName("notes")
+    val estimatedDeliveryDate: Timestamp = Timestamp.now(), // CAMBIAR: estimated_delivery_date → estimatedDeliveryDate
+    val createdAt: Timestamp = Timestamp.now(), // CAMBIAR: created_at → createdAt
+    val deliveredAt: Timestamp? = null, // CAMBIAR: delivered_at → deliveredAt
     val notes: String? = null,
-
-    @PropertyName("user_id")
-    val userId: String = ""
+    val userId: String = "" // CAMBIAR: user_id → userId
 ) {
     // Constructor sin parámetros para Firestore
     constructor() : this("", "", "", "", "", "", 0.0, PackageStatus.PENDING,

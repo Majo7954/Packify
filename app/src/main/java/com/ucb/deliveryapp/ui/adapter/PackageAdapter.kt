@@ -1,3 +1,4 @@
+// kotlin+java/com/ucb/deliveryapp/ui/adapter/PackageAdapter.kt
 package com.ucb.deliveryapp.ui.adapter
 
 import android.graphics.Color
@@ -36,14 +37,15 @@ class PackageAdapter(
     override fun onBindViewHolder(holder: PackageViewHolder, position: Int) {
         val pkg = packages[position]
 
-        holder.tvTrackingNumber.text = "Nº ${pkg.trackingNumber}"
-        holder.tvRecipientName.text = pkg.recipientName
-        holder.tvAddress.text = pkg.recipientAddress
+        // USAR camelCase
+        holder.tvTrackingNumber.text = "Nº ${pkg.trackingNumber}" // camelCase
+        holder.tvRecipientName.text = pkg.recipientName // camelCase
+        holder.tvAddress.text = pkg.recipientAddress // camelCase
 
-        // CORREGIDO: Usar Timestamp de Firebase
+        // CORREGIDO: Usar Timestamp de Firebase con camelCase
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        val date = if (pkg.estimatedDeliveryDate.seconds > 0) {
-            Date(pkg.estimatedDeliveryDate.seconds * 1000)
+        val date = if (pkg.estimatedDeliveryDate.seconds > 0) { // camelCase
+            Date(pkg.estimatedDeliveryDate.seconds * 1000) // camelCase
         } else {
             Date()
         }

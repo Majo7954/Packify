@@ -1,6 +1,8 @@
 // kotlin+java/com/ucb/deliveryapp/ui/screens/profile/ProfileScreen.kt
 package com.ucb.deliveryapp.ui.screens.profile
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,16 +14,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.ucb.deliveryapp.data.entity.User
+import com.ucb.deliveryapp.R
 import com.ucb.deliveryapp.viewmodel.UserViewModel
 import com.ucb.deliveryapp.viewmodel.UserViewModelFactory
 import kotlinx.coroutines.launch
+
+// Colores personalizados
+val verdeDelivery = Color(0xFF00A76D)
+val amarilloDelivery = Color(0xFFFAC10C)
+val rojoDelivery = Color(0xFFF44336) // Rojo para cerrar sesión
+val verdeClarito = Color(0xFF80D4B6) // Verde clarito
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +45,7 @@ fun ProfileScreen(navController: NavController) {
     var isEditing by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollState = rememberScrollState()
 
@@ -87,52 +97,66 @@ fun ProfileScreen(navController: NavController) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        "Mi Perfil",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
-                    )
+                    // Imagen en lugar de texto
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.nombre),
+                            contentDescription = "Logo",
+                            modifier = Modifier
+                                .height(32.dp)
+                                .widthIn(max = 200.dp)
+                                .padding(start = 92.dp)
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Volver al menú"
+                            contentDescription = "Volver al menú",
+                            tint = Color.White
                         )
                     }
                 },
-                actions = {
-                    if (!isEditing) {
-                        IconButton(
-                            onClick = { isEditing = true },
-                            enabled = !loadingState
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Editar perfil"
-                            )
-                        }
-                    }
-                }
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = verdeDelivery
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
-        Column(
+        // Fondo blanco para TODA la pantalla debajo de la barra superior
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(Color.White)
         ) {
-            // Tarjeta de información del usuario
-            Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Título - Alineado a la izquierda, color negro
+                Text(
+                    if (isEditing) "Editar Perfil" else "Perfil",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color.Black,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Start
+                )
+
+                // Información del usuario - SIN CONTENEDOR
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     // Campo de nombre de usuario
                     ProfileField(
@@ -143,8 +167,6 @@ fun ProfileScreen(navController: NavController) {
                         placeholder = "Ingresa tu nombre de usuario"
                     )
 
-                    Spacer(Modifier.height(16.dp))
-
                     // Campo de email (solo lectura)
                     ProfileField(
                         label = "Correo electrónico:",
@@ -154,105 +176,196 @@ fun ProfileScreen(navController: NavController) {
                         placeholder = "Correo electrónico"
                     )
 
-                    Spacer(Modifier.height(8.dp))
-
                     // Información adicional
                     Text(
                         "ID: ${currentUser?.id?.take(8)}...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.Black
                     )
                 }
-            }
 
-            // Botones de acción
-            if (isEditing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Botón cancelar
-                    OutlinedButton(
-                        onClick = {
-                            isEditing = false
-                            // Restaurar valores originales
-                            currentUser?.let { user ->
-                                username = user.username
-                                email = user.email
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = !loadingState
+                // Información sobre edición - Con fondo verde clarito (solo cuando no está editando)
+                if (!isEditing) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = verdeClarito)
                     ) {
-                        Text("Cancelar")
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                "💡 Información",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Presiona el botón 'Editar Perfil' para modificar tu información. " +
+                                        "El correo electrónico no se puede modificar por seguridad.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Black
+                            )
+                        }
                     }
+                }
 
-                    // Botón guardar
-                    Button(
-                        onClick = {
-                            if (username.isBlank()) {
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        message = "El nombre de usuario no puede estar vacío",
-                                        duration = SnackbarDuration.Short
+                // Botones de acción
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (isEditing) {
+                        // Botones cuando está editando - SOLO CANCELAR Y GUARDAR
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Botón cancelar - COLOR ROJO
+                            Button(
+                                onClick = {
+                                    isEditing = false
+                                    // Restaurar valores originales
+                                    currentUser?.let { user ->
+                                        username = user.username
+                                        email = user.email
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = !loadingState,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = rojoDelivery,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text(
+                                    "Cancelar",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            // Botón guardar - COLOR AMARILLO
+                            Button(
+                                onClick = {
+                                    if (username.isBlank()) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                message = "El nombre de usuario no puede estar vacío",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                        }
+                                    } else {
+                                        currentUser?.let { currentUser ->
+                                            val updatedUser = currentUser.copy(
+                                                username = username.trim()
+                                            )
+                                            viewModel.updateUserProfile(updatedUser)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = !loadingState && username.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = amarilloDelivery,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                if (loadingState) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
                                     )
-                                }
-                            } else {
-                                currentUser?.let { currentUser ->
-                                    val updatedUser = currentUser.copy(
-                                        username = username.trim()
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Save,
+                                        contentDescription = "Guardar",
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    viewModel.updateUserProfile(updatedUser)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Guardar",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = !loadingState && username.isNotBlank()
-                    ) {
-                        if (loadingState) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
+                        }
+                    } else {
+                        // Botones cuando NO está editando - SOLO EDITAR PERFIL Y CERRAR SESIÓN
+                        // Botón Editar Perfil (amarillo)
+                        Button(
+                            onClick = { isEditing = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            enabled = !loadingState,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = amarilloDelivery,
+                                contentColor = Color.White
                             )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = "Guardar",
-                                modifier = Modifier.size(18.dp)
+                        ) {
+                            Text(
+                                "Editar Perfil",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Guardar")
+                        }
+
+                        // Botón Cerrar Sesión (rojo)
+                        Button(
+                            onClick = { showLogoutDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = rojoDelivery,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                "Cerrar Sesión",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
             }
+        }
+    }
 
-            // Información sobre edición
-            if (!isEditing) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Text(
-                            "💡 Información",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Presiona el icono de edición para modificar tu información de perfil. " +
-                                    "El correo electrónico no se puede modificar por seguridad.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+    // Diálogo de confirmación para cerrar sesión
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Cerrar Sesión") },
+            text = { Text("¿Estás seguro de que quieres cerrar sesión? Tendrás que iniciar sesión nuevamente para acceder a tu cuenta.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        coroutineScope.launch {
+                            // Ejecutar logout
+                            viewModel.logout()
+                            // Navegar al login limpiando el back stack
+                            navController.navigate(com.ucb.deliveryapp.ui.navigation.Routes.LOGIN) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
                     }
+                ) {
+                    Text("Cerrar Sesión")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("Cancelar")
                 }
             }
-        }
+        )
     }
 }
 
@@ -269,7 +382,7 @@ fun ProfileField(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
+            color = Color.Black
         )
         Spacer(Modifier.height(8.dp))
         if (isEditing) {
@@ -278,16 +391,19 @@ fun ProfileField(
                 onValueChange = onValueChange,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(placeholder) },
-                singleLine = true
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = Color.Black
+                )
             )
         } else {
             Text(
                 text = value.ifBlank { "No especificado" },
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = Color.Black,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = 4.dp)
             )
         }
     }
