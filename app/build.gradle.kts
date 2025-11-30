@@ -96,6 +96,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
 
     // --- Coroutines ---
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
@@ -104,7 +105,8 @@ dependencies {
 
     // --- Navegación y Mapas ---
     implementation("androidx.navigation:navigation-compose:2.8.1")
-    implementation("org.maplibre.gl:android-sdk:11.6.1")
+    implementation("com.mapbox.maps:android:10.14.0")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation(libs.play.services.maps)
 
     // --- UI Clásica (RecyclerView y CardView) ---

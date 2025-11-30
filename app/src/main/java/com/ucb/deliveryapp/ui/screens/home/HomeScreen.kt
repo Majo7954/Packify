@@ -26,12 +26,12 @@ import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackagePriority
 import com.ucb.deliveryapp.data.entity.PackageStatus
 import com.ucb.deliveryapp.data.local.LoginDataStore
-import com.ucb.deliveryapp.ui.screens.MapLibreView
+import com.ucb.deliveryapp.ui.screens.MapboxMapView
+import com.mapbox.geojson.Point
 import com.ucb.deliveryapp.ui.screens.packages.PackageListActivity
 import com.ucb.deliveryapp.viewmodel.PackageViewModel
 import com.ucb.deliveryapp.viewmodel.getPackageViewModelFactory
 import com.google.firebase.Timestamp
-import java.util.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
@@ -50,8 +50,8 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
         factory = getPackageViewModelFactory(context)
     )
 
-    var origin by remember { mutableStateOf("") }
-    var destination by remember { mutableStateOf("") }
+    var origin by remember { mutableStateOf("") }      // texto ingresado por usuario
+    var destination by remember { mutableStateOf("") } // texto ingresado por usuario
     var weight by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("") }
     var quotedPrice by remember { mutableStateOf("") }
@@ -81,6 +81,11 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
 
     // Estado para userId dinámico
     var currentUserId by remember { mutableStateOf<String?>(null) }
+
+    // Estados para ruta / ETA
+    var routeInfoText by remember { mutableStateOf<String?>(null) }
+    var originPoint by remember { mutableStateOf<Point?>(null) }
+    var destinationPoint by remember { mutableStateOf<Point?>(null) }
 
     // Obtener el userId del usuario logueado
     LaunchedEffect(Unit) {
@@ -116,7 +121,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
             CenterAlignedTopAppBar(
                 title = { Text("Página Principal") },
                 actions = {
-                    IconButton(onClick = onNavigateToMenu) { // Cambiar aquí
+                    IconButton(onClick = onNavigateToMenu) {
                         Icon(
                             imageVector = Icons.Default.List,
                             contentDescription = "Menú"
@@ -165,32 +170,99 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
                         }
                     }
 
+                    // MAPA
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
                             .clip(RoundedCornerShape(12.dp))
                     ) {
-                        MapLibreView(modifier = Modifier.fillMaxSize())
+                        // MapboxMapView toma origin/destination como Points; onRouteInfo recibe ETA y distancia
+                        MapboxMapView(
+                            modifier = Modifier.fillMaxSize(),
+                            origin = originPoint,
+                            destination = destinationPoint,
+                            onRouteInfo = { etaMinutes, distanceKm ->
+                                routeInfoText = "ETA ≈ ${etaMinutes} min • ${"%.2f".format(distanceKm)} km"
+                            }
+                        )
+                    }
+
+                    // Mostrar info de ruta si existe
+                    routeInfoText?.let { info ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = info,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Campos editables
+                    // Campos editables: origen y destino (simple: acepta "lat,lng" o "lng,lat" o texto libre)
                     EditFieldCard(
-                        label = "Lugar de origen",
+                        label = "Lugar de origen (lat,lng o lng,lat)",
                         value = origin,
                         onValueChange = { origin = it },
-                        onClear = { origin = "" }
+                        onClear = {
+                            origin = ""
+                            originPoint = null
+                            routeInfoText = null
+                        }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     EditFieldCard(
-                        label = "Lugar de destino",
+                        label = "Lugar de destino (lat,lng o lng,lat)",
                         value = destination,
                         onValueChange = { destination = it },
-                        onClear = { destination = "" }
+                        onClear = {
+                            destination = ""
+                            destinationPoint = null
+                            routeInfoText = null
+                        }
                     )
+
+                    // Botón para convertir los strings a Points y pedir ruta
                     Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                // Intentar parsear los campos a coordenadas
+                                val parsedOrigin = parseCoordinatesFromString(origin)
+                                val parsedDest = parseCoordinatesFromString(destination)
+                                if (parsedOrigin != null && parsedDest != null) {
+                                    originPoint = parsedOrigin
+                                    destinationPoint = parsedDest
+                                } else {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("No se pudieron parsear las coordenadas. Usa formato 'lat,lng' o 'lng,lat' (ej: -16.5,-68.1).")
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Calcular ruta")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                // limpiar
+                                origin = ""
+                                destination = ""
+                                originPoint = null
+                                destinationPoint = null
+                                routeInfoText = null
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Limpiar")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Resto de campos editables
                     EditFieldCard(
                         label = "Peso (kg)",
                         value = weight,
@@ -227,7 +299,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // SOLO BOTÓN DE CONFIRMAR ENVÍO - QUITÉ EL BOTÓN "VER MIS PAQUETES"
+                    // BOTÓN CONFIRMAR ENVÍO
                     Button(
                         onClick = {
                             if (validateInput(origin, destination, weight)) {
@@ -247,7 +319,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
                         Text("Confirmar Envío")
                     }
 
-                    // Espacio adicional al final para mejor scroll
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
@@ -292,6 +363,9 @@ fun HomeScreen(onNavigateToMenu: () -> Unit) {
                             size = ""
                             quotedPrice = ""
                             withinDepartment = false
+                            originPoint = null
+                            destinationPoint = null
+                            routeInfoText = null
                         } ?: run {
                             scope.launch {
                                 snackbarHostState.showSnackbar("❌ Error: No se pudo identificar al usuario")
@@ -325,6 +399,9 @@ private fun hasLocationPermission(context: android.content.Context): Boolean {
             ) == PackageManager.PERMISSION_GRANTED
 }
 
+/* ---------------------------
+   EditFieldCard (SIN CAMBIOS)
+   --------------------------- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditFieldCard(
@@ -390,6 +467,34 @@ private fun EditFieldCard(
         }
     }
 }
+
+/* ---------------------------
+   Helper: parsear coordenadas
+   - acepta "lat,lng" o "lng,lat"
+   - intenta detectar orden por rangos válidos
+   --------------------------- */
+private fun parseCoordinatesFromString(s: String?): Point? {
+    if (s.isNullOrBlank()) return null
+    val cleaned = s.trim().replace("\\s+".toRegex(), "")
+    val parts = cleaned.split(",")
+    if (parts.size < 2) return null
+    val a = parts[0].toDoubleOrNull() ?: return null
+    val b = parts[1].toDoubleOrNull() ?: return null
+
+    // if a in [-90,90] -> likely latitude, so order is lat,lng
+    return if (a in -90.0..90.0 && b in -180.0..180.0) {
+        Point.fromLngLat(b, a) // Point expects (lng, lat)
+    } else if (a in -180.0..180.0 && b in -90.0..90.0) {
+        Point.fromLngLat(a, b)
+    } else {
+        // ambos válidos como long/lat ranges, fallback assume lat,lng
+        Point.fromLngLat(b, a)
+    }
+}
+
+/* ---------------------------
+   Funciones auxiliares (sin cambios)
+   --------------------------- */
 
 // Función para crear Package con userId String y Timestamp
 private fun createPackageFromForm(
