@@ -9,18 +9,28 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
+val Green80 = Color(0xFF00A76D)
+val GreenGrey80 = Color(0xFF80D4B6)
+val Yellow80 = Color(0xFFFAC10C)
+
+val Green40 = Color(0xFF006A44)
+val GreenGrey40 = Color(0xFF4DA384)
+val Yellow40 = Color(0xFFC79A00)
+
+
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = Green80,
+    secondary = GreenGrey80,
+    tertiary = Yellow80
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = Green40,
+    secondary = GreenGrey40,
+    tertiary = Yellow40
 
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
@@ -52,7 +62,7 @@ fun DeliveryappTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = AppTypography,
         content = content
     )
 }
