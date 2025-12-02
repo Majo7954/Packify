@@ -1,4 +1,4 @@
-// HomeScreen.kt - VERSIÓN COMPLETA
+// HomeScreen.kt - VERSIÓN CON VALIDACIONES COMPLETAS PARA PLAY STORE
 package com.ucb.deliveryapp.ui.screens.home
 
 import android.Manifest
@@ -45,6 +45,139 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.tasks.await
+import com.ucb.deliveryapp.ui.navigation.Routes
+
+// ==================== CLASES PARA VALIDACIÓN ====================
+
+/**
+ * Resultado de validación con mensajes específicos
+ */
+sealed class ValidationResult {
+    object Success : ValidationResult()
+    data class Error(val message: String) : ValidationResult()
+}
+
+/**
+ * Datos del formulario para validar
+ */
+data class PackageFormData(
+    val origin: String,
+    val destination: String,
+    val weight: String,
+    val size: String = "",
+    val quotedPrice: String = "",
+    val withinDepartment: Boolean = false
+)
+
+// ==================== FUNCIONES DE VALIDACIÓN ====================
+
+/**
+ * Valida formato de coordenadas (latitud, longitud)
+ */
+private fun isValidCoordinateFormat(coordinate: String): Boolean {
+    return try {
+        val parts = coordinate.split(",")
+        if (parts.size != 2) return false
+
+        val lat = parts[0].trim().toDouble()
+        val lng = parts[1].trim().toDouble()
+
+        // Coordenadas válidas: latitud entre -90 y 90, longitud entre -180 y 180
+        lat in -90.0..90.0 && lng in -180.0..180.0
+    } catch (e: Exception) {
+        false
+    }
+}
+
+/**
+ * Valida que sea un número positivo
+ */
+private fun isValidPositiveNumber(value: String, maxValue: Double = Double.MAX_VALUE): Boolean {
+    return try {
+        val num = value.toDouble()
+        num > 0 && num <= maxValue
+    } catch (e: NumberFormatException) {
+        false
+    }
+}
+
+/**
+ * Valida que sea un número decimal válido (para precio)
+ */
+private fun isValidDecimalNumber(value: String): Boolean {
+    return try {
+        value.toDouble()
+        true
+    } catch (e: NumberFormatException) {
+        false
+    }
+}
+
+/**
+ * Valida que el tamaño no exceda límites razonables
+ */
+private fun isValidSize(size: String): Boolean {
+    return size.length <= 50 // Máximo 50 caracteres
+}
+
+/**
+ * Valida todos los campos del formulario de paquete
+ */
+private fun validatePackageForm(data: PackageFormData): ValidationResult {
+    // 1. Validar origen (obligatorio y formato coordenadas)
+    if (data.origin.isBlank()) {
+        return ValidationResult.Error("El origen es obligatorio")
+    }
+    if (!isValidCoordinateFormat(data.origin)) {
+        return ValidationResult.Error("Formato de origen inválido.\nEjemplo: -16.5000, -68.1500")
+    }
+
+    // 2. Validar destino (obligatorio y formato coordenadas)
+    if (data.destination.isBlank()) {
+        return ValidationResult.Error("El destino es obligatorio")
+    }
+    if (!isValidCoordinateFormat(data.destination)) {
+        return ValidationResult.Error("Formato de destino inválido.\nEjemplo: -16.5000, -68.1500")
+    }
+
+    // 3. Validar que origen y destino no sean iguales
+    if (data.origin.trim() == data.destination.trim()) {
+        return ValidationResult.Error("El origen y destino no pueden ser iguales")
+    }
+
+    // 4. Validar peso (obligatorio, positivo, límite 100kg)
+    if (data.weight.isBlank()) {
+        return ValidationResult.Error("El peso es obligatorio")
+    }
+    if (!isValidPositiveNumber(data.weight, 100.0)) {
+        return ValidationResult.Error("El peso debe ser un número positivo\nMáximo 100 kg")
+    }
+
+    // 5. Validar tamaño (opcional pero con límites)
+    if (data.size.isNotBlank() && !isValidSize(data.size)) {
+        return ValidationResult.Error("El tamaño es demasiado largo\nMáximo 50 caracteres")
+    }
+
+    // 6. Validar precio cotizado (opcional pero válido)
+    if (data.quotedPrice.isNotBlank()) {
+        if (!isValidDecimalNumber(data.quotedPrice)) {
+            return ValidationResult.Error("El precio debe ser un número válido")
+        }
+        try {
+            val price = data.quotedPrice.toDouble()
+            if (price < 0) {
+                return ValidationResult.Error("El precio no puede ser negativo")
+            }
+            if (price > 10000) { // Límite razonable de precio
+                return ValidationResult.Error("El precio máximo es $10,000")
+            }
+        } catch (e: Exception) {
+            return ValidationResult.Error("Formato de precio inválido")
+        }
+    }
+
+    return ValidationResult.Success
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +204,13 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
+    // Estados para validación en tiempo real
+    var originError by remember { mutableStateOf<String?>(null) }
+    var destinationError by remember { mutableStateOf<String?>(null) }
+    var weightError by remember { mutableStateOf<String?>(null) }
+    var sizeError by remember { mutableStateOf<String?>(null) }
+    var priceError by remember { mutableStateOf<String?>(null) }
+
     // ✅ MEJOR MANEJO DE PERMISOS
     var locationPermissionGranted by remember { mutableStateOf(false) }
     var shouldShowPermissionRationale by remember { mutableStateOf(false) }
@@ -92,6 +232,8 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                     currentLocation = Point.fromLngLat(location.longitude, location.latitude)
                     originPoint = currentLocation
                     origin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
+                    // Limpiar error al obtener ubicación automática
+                    originError = null
                 }
             }
         } else {
@@ -114,6 +256,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                 currentLocation = Point.fromLngLat(location.longitude, location.latitude)
                 originPoint = currentLocation
                 origin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
+                originError = null
             }
             isGettingLocation = false
         } else {
@@ -124,18 +267,8 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     }
 
-    if (showConfirmationScreen) {
-        // Si tienes ConfirmationScreen, descomenta esto:
-        // ConfirmationScreen(navController = navController, onNavigateToPackages = {})
-        // Por ahora, solo retorna un texto
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Paquete creado exitosamente")
-        }
-        return
-    }
+    // Eliminar el bloque de showConfirmationScreen (ya no se usa)
+    // if (showConfirmationScreen) { ... }
 
     // ✅ DIALOGO PARA SELECCIÓN EN MAPA
     if (showMapForDestinationSelection) {
@@ -169,6 +302,10 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                                 destinationPoint = point
                                 destination = "${"%.6f".format(point.latitude())}, ${"%.6f".format(point.longitude())}"
                                 showMapForDestinationSelection = false
+                                // Validar destino automáticamente
+                                if (isValidCoordinateFormat(destination)) {
+                                    destinationError = null
+                                }
                                 scope.launch {
                                     snackbarHostState.showSnackbar("📍 Destino seleccionado")
                                 }
@@ -294,22 +431,44 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ✅ UBICACIÓN ACTUAL
-                    CurrentLocationCard(
+                    // ✅ UBICACIÓN ACTUAL CON VALIDACIÓN
+                    CurrentLocationCardWithValidation(
                         location = origin,
+                        error = originError,
                         snackbarHostState = snackbarHostState,
-                        scope = scope
+                        scope = scope,
+                        onLocationChange = { newOrigin ->
+                            origin = newOrigin
+                            // Validar en tiempo real
+                            if (newOrigin.isNotBlank() && !isValidCoordinateFormat(newOrigin)) {
+                                originError = "Formato inválido. Usa: latitud, longitud"
+                            } else {
+                                originError = null
+                                originPoint = parseCoordinatesFromString(newOrigin)
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ DESTINO
-                    DestinationSelectionCard(
+                    // ✅ DESTINO CON VALIDACIÓN
+                    DestinationSelectionCardWithValidation(
                         destination = destination,
-                        onTextChange = { destination = it },
+                        error = destinationError,
+                        onTextChange = { newDest ->
+                            destination = newDest
+                            // Validar en tiempo real
+                            if (newDest.isNotBlank() && !isValidCoordinateFormat(newDest)) {
+                                destinationError = "Formato inválido. Usa: latitud, longitud"
+                            } else {
+                                destinationError = null
+                                destinationPoint = parseCoordinatesFromString(newDest)
+                            }
+                        },
                         onClear = {
                             destination = ""
                             destinationPoint = null
+                            destinationError = null
                             routeInfoText = null
                         },
                         onSelectOnMap = {
@@ -328,18 +487,37 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = {
+                                // Validar antes de calcular ruta
                                 if (destinationPoint != null && originPoint != null) {
-                                    // La ruta se calcula automáticamente cuando ambos puntos están definidos
                                     scope.launch {
                                         snackbarHostState.showSnackbar("✅ Calculando ruta...")
                                     }
                                 } else {
-                                    val parsedDest = parseCoordinatesFromString(destination)
-                                    if (originPoint != null && parsedDest != null) {
-                                        destinationPoint = parsedDest
-                                    } else {
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("❌ Selecciona un destino primero")
+                                    val validation = validatePackageForm(
+                                        PackageFormData(
+                                            origin = origin,
+                                            destination = destination,
+                                            weight = if (weight.isNotBlank()) weight else "1",
+                                            size = size,
+                                            quotedPrice = quotedPrice,
+                                            withinDepartment = withinDepartment
+                                        )
+                                    )
+
+                                    when (validation) {
+                                        is ValidationResult.Success -> {
+                                            val parsedDest = parseCoordinatesFromString(destination)
+                                            if (originPoint != null && parsedDest != null) {
+                                                destinationPoint = parsedDest
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar("✅ Calculando ruta...")
+                                                }
+                                            }
+                                        }
+                                        is ValidationResult.Error -> {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("❌ ${validation.message}")
+                                            }
                                         }
                                     }
                                 }
@@ -356,6 +534,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             onClick = {
                                 destination = ""
                                 destinationPoint = null
+                                destinationError = null
                                 routeInfoText = null
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Destino limpiado")
@@ -372,12 +551,94 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ✅ RESTANTE DEL FORMULARIO
-                    EditFieldCard("Peso (kg)", weight, onValueChange = { weight = it }, onClear = { weight = "" }, isNumber = true)
+                    // ✅ PESO CON VALIDACIÓN
+                    EditFieldCardWithValidation(
+                        label = "Peso (kg)",
+                        value = weight,
+                        error = weightError,
+                        onValueChange = { newWeight ->
+                            weight = newWeight
+                            // Validar en tiempo real
+                            if (newWeight.isNotBlank()) {
+                                if (!isValidPositiveNumber(newWeight, 100.0)) {
+                                    weightError = "Peso inválido. Máx: 100 kg"
+                                } else {
+                                    weightError = null
+                                }
+                            } else {
+                                weightError = null
+                            }
+                        },
+                        onClear = {
+                            weight = ""
+                            weightError = null
+                        },
+                        isNumber = true,
+                        isRequired = true
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    EditFieldCard("Tamaño", size, onValueChange = { size = it }, onClear = { size = "" })
+
+                    // ✅ TAMAÑO CON VALIDACIÓN
+                    EditFieldCardWithValidation(
+                        label = "Tamaño",
+                        value = size,
+                        error = sizeError,
+                        onValueChange = { newSize ->
+                            size = newSize
+                            // Validar en tiempo real
+                            if (newSize.isNotBlank() && !isValidSize(newSize)) {
+                                sizeError = "Máximo 50 caracteres"
+                            } else {
+                                sizeError = null
+                            }
+                        },
+                        onClear = {
+                            size = ""
+                            sizeError = null
+                        },
+                        isNumber = false,
+                        isRequired = false
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    EditFieldCard("Precio Cotizado", quotedPrice, onValueChange = { quotedPrice = it }, onClear = { quotedPrice = "" }, isNumber = true)
+
+                    // ✅ PRECIO COTIZADO CON VALIDACIÓN
+                    EditFieldCardWithValidation(
+                        label = "Precio Cotizado ($)",
+                        value = quotedPrice,
+                        error = priceError,
+                        onValueChange = { newPrice ->
+                            quotedPrice = newPrice
+                            // Validar en tiempo real
+                            if (newPrice.isNotBlank()) {
+                                if (!isValidDecimalNumber(newPrice)) {
+                                    priceError = "Precio inválido"
+                                } else {
+                                    try {
+                                        val price = newPrice.toDouble()
+                                        if (price < 0) {
+                                            priceError = "No puede ser negativo"
+                                        } else if (price > 10000) {
+                                            priceError = "Máximo $10,000"
+                                        } else {
+                                            priceError = null
+                                        }
+                                    } catch (e: Exception) {
+                                        priceError = "Número inválido"
+                                    }
+                                }
+                            } else {
+                                priceError = null
+                            }
+                        },
+                        onClear = {
+                            quotedPrice = ""
+                            priceError = null
+                        },
+                        isNumber = true,
+                        isRequired = false
+                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -398,13 +659,29 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // ✅ BOTÓN DE CONFIRMAR CON VALIDACIÓN COMPLETA
                     Button(
                         onClick = {
-                            if (validateInput(origin, destination, weight)) {
-                                showConfirmationDialog = true
-                            } else {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("❌ Completa origen, destino y peso correctamente")
+                            // Validar todos los campos
+                            val validation = validatePackageForm(
+                                PackageFormData(
+                                    origin = origin,
+                                    destination = destination,
+                                    weight = weight,
+                                    size = size,
+                                    quotedPrice = quotedPrice,
+                                    withinDepartment = withinDepartment
+                                )
+                            )
+
+                            when (validation) {
+                                is ValidationResult.Success -> {
+                                    showConfirmationDialog = true
+                                }
+                                is ValidationResult.Error -> {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("❌ ${validation.message}")
+                                    }
                                 }
                             }
                         },
@@ -431,7 +708,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                                 Text("Creando paquete...", color = Color.White)
                             }
                         } else {
-                            Text("Confirmar Envío", color = Color.White, fontWeight = FontWeight.Medium)
+                            Text("Confirmar Envío", color = Color.Black, fontWeight = FontWeight.Medium)
                         }
                     }
 
@@ -445,19 +722,58 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { if (!isLoading) showConfirmationDialog = false },
-            title = { Text("Confirmar Envío", fontWeight = FontWeight.Bold) },
+            title = {
+                Text("Confirmar Envío", fontWeight = FontWeight.Bold)
+            },
             text = {
                 Column {
-                    Text("¿Estás seguro de que quieres registrar este paquete?")
+                    Text("¿Estás seguro de que quieres registrar este paquete?",
+                        color = Color.Black)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Origen: $origin\nDestino: $destination\nPeso: $weight kg",
+
+                    // Información detallada del paquete
+                    Text("Detalles del Paquete:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF00A76D))
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text("• Origen: $origin", style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black)
+                    Text("• Destino: $destination", style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black)
+                    Text("• Peso: $weight kg", style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black)
+
+                    if (size.isNotBlank()) {
+                        Text("• Tamaño: $size", style = MaterialTheme.typography.bodySmall,
+                            color = Color.Black)
+                    }
+
+                    if (quotedPrice.isNotBlank()) {
+                        Text("• Precio cotizado: $$quotedPrice", style = MaterialTheme.typography.bodySmall,
+                            color = Color.Black)
+                    }
+
+                    Text("• Tipo: ${if (withinDepartment) "Dentro del departamento" else "Nacional"}",
                         style = MaterialTheme.typography.bodySmall)
+
                     routeInfoText?.let { info ->
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Ruta: $info",
+                        Text("Ruta estimada: $info",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF00A76D))
                     }
+
+                    // ✅ NOTA PARA PLAY STORE (transparencia)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Nota: Al confirmar, aceptas nuestros términos de servicio y políticas de privacidad.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
                 }
             },
             confirmButton = {
@@ -475,19 +791,23 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                                 scope.launch {
                                     delay(1000)
                                     isLoading = false
-                                    showConfirmationScreen = true
-                                    snackbarHostState.showSnackbar("✅ Paquete creado exitosamente")
+                                    // Navegar a ConfirmationScreen usando navController
+                                    navController.navigate(Routes.CONFIRMATION) {
+                                        // Limpiar el stack de navegación para que no pueda volver atrás con back
+                                        popUpTo(Routes.HOME) { inclusive = false }
+                                    }
+                                    snackbarHostState.showSnackbar("Paquete creado exitosamente")
                                 }
                             } catch (e: Exception) {
                                 isLoading = false
                                 scope.launch {
-                                    snackbarHostState.showSnackbar("❌ Error al crear el paquete: ${e.message}")
+                                    snackbarHostState.showSnackbar("Error al crear el paquete: ${e.message}")
                                 }
                             }
                         } ?: run {
                             isLoading = false
                             scope.launch {
-                                snackbarHostState.showSnackbar("❌ Error: No se pudo identificar al usuario")
+                                snackbarHostState.showSnackbar("Error: No se pudo identificar al usuario")
                             }
                         }
                     },
@@ -499,7 +819,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("Confirmar")
+                        Text("Confirmar Envío")
                     }
                 }
             },
@@ -510,12 +830,297 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                 ) {
                     Text("Cancelar")
                 }
-            }
+            },
+            containerColor = Color.White
         )
     }
 }
 
-// ✅ COMPONENTES AUXILIARES - AGREGAR AL FINAL DEL ARCHIVO
+// ==================== COMPONENTES CON VALIDACIÓN ====================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrentLocationCardWithValidation(
+    location: String,
+    error: String?,
+    snackbarHostState: SnackbarHostState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onLocationChange: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (error != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "📍 Tu ubicación actual",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) Color(0xFFD32F2F) else Color.Black
+                )
+                if (error != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD32F2F),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = location,
+                    onValueChange = onLocationChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Obteniendo ubicación...", color = Color.Gray) },
+                    singleLine = true,
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White,
+                        unfocusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White.copy(alpha = 0.7f),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        cursorColor = Color.Black,
+                        focusedPlaceholderColor = Color.Gray,
+                        unfocusedPlaceholderColor = Color.Gray,
+                        errorBorderColor = Color(0xFFD32F2F),
+                        errorContainerColor = Color(0xFFFFEBEE),
+                        errorCursorColor = Color(0xFFD32F2F),
+                        errorTextColor = Color(0xFFD32F2F),
+                        errorPlaceholderColor = Color.Gray
+                    )
+                )
+                if (location.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("📍 Ubicación actual: $location")
+                            }
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Ubicación actual",
+                            tint = if (error != null) Color(0xFFD32F2F) else Color.Black
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DestinationSelectionCardWithValidation(
+    destination: String,
+    error: String?,
+    onTextChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onSelectOnMap: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (error != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "🎯 Lugar de destino",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) Color(0xFFD32F2F) else Color.Black,
+                    modifier = Modifier.weight(1f)
+                )
+                if (error != null) {
+                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                IconButton(
+                    onClick = onSelectOnMap,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = "Seleccionar en mapa",
+                        tint = if (error != null) Color(0xFFD32F2F) else Color.Black
+                    )
+                }
+            }
+
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD32F2F),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = destination,
+                    onValueChange = onTextChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Ej: -16.5000, -68.1500", color = Color.Gray) },
+                    singleLine = true,
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White,
+                        unfocusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White.copy(alpha = 0.7f),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        cursorColor = Color.Black,
+                        focusedPlaceholderColor = Color.Gray,
+                        unfocusedPlaceholderColor = Color.Gray,
+                        errorBorderColor = Color(0xFFD32F2F),
+                        errorContainerColor = Color(0xFFFFEBEE),
+                        errorCursorColor = Color(0xFFD32F2F),
+                        errorTextColor = Color(0xFFD32F2F),
+                        errorPlaceholderColor = Color.Gray
+                    )
+                )
+                if (destination.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onClear,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Limpiar",
+                            tint = if (error != null) Color(0xFFD32F2F) else Color.Black
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditFieldCardWithValidation(
+    label: String,
+    value: String,
+    error: String?,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+    isNumber: Boolean = false,
+    isRequired: Boolean = false
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (error != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (isRequired) "$label *" else label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) Color(0xFFD32F2F) else Color.Black
+                )
+                if (error != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD32F2F),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { newValue ->
+                        if (isNumber) {
+                            if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
+                                onValueChange(newValue)
+                            }
+                        } else {
+                            onValueChange(newValue)
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            if (isRequired) "Ingresa $label" else "$label (opcional)",
+                            color = Color.Gray
+                        )
+                    },
+                    singleLine = true,
+                    isError = error != null || (isNumber && value.isNotBlank() && !value.matches(Regex("^\\d*\\.?\\d*$"))),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White,
+                        unfocusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White.copy(alpha = 0.7f),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        cursorColor = Color.Black,
+                        focusedPlaceholderColor = Color.Gray,
+                        unfocusedPlaceholderColor = Color.Gray,
+                        errorBorderColor = Color(0xFFD32F2F),
+                        errorContainerColor = Color(0xFFFFEBEE),
+                        errorCursorColor = Color(0xFFD32F2F),
+                        errorTextColor = Color(0xFFD32F2F),
+                        errorPlaceholderColor = Color.Gray
+                    )
+                )
+                if (value.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onClear,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Limpiar",
+                            tint = if (error != null) Color(0xFFD32F2F) else Color.Black
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==================== COMPONENTES AUXILIARES ====================
 
 @Composable
 private fun PermissionWarningCard(onActivate: () -> Unit) {
@@ -611,205 +1216,8 @@ private fun NoPermissionMapPlaceholder() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CurrentLocationCard(
-    location: String,
-    snackbarHostState: SnackbarHostState,
-    scope: kotlinx.coroutines.CoroutineScope
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF80D4B6))
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = "📍 Tu ubicación actual",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.Black
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = { },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Obteniendo ubicación...", color = Color.Gray) },
-                    singleLine = true,
-                    readOnly = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.7f),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        cursorColor = Color.Black,
-                        focusedPlaceholderColor = Color.Gray,
-                        unfocusedPlaceholderColor = Color.Gray,
-                    )
-                )
-                if (location.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("📍 Ubicación actual: $location")
-                            }
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Ubicación actual", tint = Color.Black)
-                    }
-                }
-            }
-        }
-    }
-}
+// ==================== FUNCIONES AUXILIARES ====================
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DestinationSelectionCard(
-    destination: String,
-    onTextChange: (String) -> Unit,
-    onClear: () -> Unit,
-    onSelectOnMap: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF80D4B6))
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "🎯 Lugar de destino",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Black,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(
-                    onClick = onSelectOnMap,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = "Seleccionar en mapa",
-                        tint = Color.Black
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = destination,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ej: -16.5000, -68.1500", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.7f),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        cursorColor = Color.Black,
-                        focusedPlaceholderColor = Color.Gray,
-                        unfocusedPlaceholderColor = Color.Gray,
-                    )
-                )
-                if (destination.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onClear,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Limpiar",
-                            tint = Color.Black
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EditFieldCard(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    onClear: () -> Unit,
-    isNumber: Boolean = false
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF80D4B6))
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.Black
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { newValue ->
-                        if (isNumber) {
-                            if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
-                                onValueChange(newValue)
-                            }
-                        } else {
-                            onValueChange(newValue)
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ingresa $label", color = Color.Gray) },
-                    singleLine = true,
-                    isError = isNumber && value.isNotBlank() && !value.matches(Regex("^\\d*\\.?\\d*$")),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.7f),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        cursorColor = Color.Black,
-                        focusedPlaceholderColor = Color.Gray,
-                        unfocusedPlaceholderColor = Color.Gray,
-                        errorBorderColor = Color.Red,
-                        errorContainerColor = Color.White,
-                        errorCursorColor = Color.Black,
-                        errorTextColor = Color.Black,
-                        errorPlaceholderColor = Color.Gray
-                    )
-                )
-                if (value.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onClear,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Limpiar", tint = Color.Black)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ✅ FUNCIÓN CORREGIDA PARA OBTENER UBICACIÓN
 private suspend fun getCurrentLocationWithChecks(context: android.content.Context): Location? {
     val hasFineLocation = ContextCompat.checkSelfPermission(
         context,
@@ -848,7 +1256,6 @@ private fun hasLocationPermission(context: android.content.Context): Boolean {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 }
 
-// ✅ FUNCIÓN PARA PARSEAR COORDENADAS
 private fun parseCoordinatesFromString(s: String?): Point? {
     if (s.isNullOrBlank()) return null
     val cleaned = s.trim().replace("\\s+".toRegex(), "")
@@ -866,7 +1273,6 @@ private fun parseCoordinatesFromString(s: String?): Point? {
     }
 }
 
-// ✅ FUNCIÓN PARA CREAR PAQUETE
 private fun createPackageFromForm(
     origin: String,
     destination: String,
@@ -917,15 +1323,6 @@ private fun generateTrackingNumber(): String {
     val timestamp = System.currentTimeMillis().toString().takeLast(8)
     val random = (1000..9999).random()
     return "UCB${timestamp}${random}"
-}
-
-private fun validateInput(origin: String, destination: String, weight: String): Boolean {
-    return origin.isNotBlank() && destination.isNotBlank() && weight.isNotBlank() &&
-            try {
-                weight.toDouble() > 0
-            } catch (e: NumberFormatException) {
-                false
-            }
 }
 
 @Composable

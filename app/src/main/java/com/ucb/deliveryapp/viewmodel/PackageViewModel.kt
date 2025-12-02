@@ -1,13 +1,17 @@
+// PackageViewModel.kt - VERSIÓN CON TRANSICIONES AUTOMÁTICAS REALES
 package com.ucb.deliveryapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.Timestamp
 import com.ucb.deliveryapp.data.entity.Package
+import com.ucb.deliveryapp.data.entity.PackageStatus
 import com.ucb.deliveryapp.data.repository.PackageRepositoryImpl
 import com.ucb.deliveryapp.util.Result
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewModel() {
 
@@ -29,6 +33,7 @@ class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewMode
 
     /**
      * Obtiene todos los paquetes asociados a un ID de usuario específico.
+     * Aplica transiciones automáticas de estado durante la carga.
      */
     fun loadUserPackages(userId: String) {
         viewModelScope.launch {
@@ -37,11 +42,98 @@ class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewMode
 
             try {
                 val result = repository.getUserPackages(userId)
-                _packagesState.value = result
+
+                when (result) {
+                    is Result.Success -> {
+                        // ✅ APLICAR TRANSICIONES AUTOMÁTICAS A LOS PAQUETES
+                        val updatedPackages = result.data.map { pkg ->
+                            applyAutoStatusTransition(pkg)
+                        }
+
+                        // ✅ ACTUALIZAR EN BASE DE DATOS SI HAY CAMBIOS
+                        updatedPackages.forEach { updatedPkg ->
+                            if (updatedPkg.status != getOriginalStatus(result.data, updatedPkg.id)) {
+                                updatePackageStatusInBackground(updatedPkg.id, updatedPkg.status)
+                            }
+                        }
+
+                        _packagesState.value = Result.Success(updatedPackages)
+                    }
+                    is Result.Error -> {
+                        _packagesState.value = result
+                    }
+                    else -> {
+                        _packagesState.value = result
+                    }
+                }
             } catch (e: Exception) {
                 _packagesState.value = Result.Error(e)
             } finally {
                 _loadingState.value = false
+            }
+        }
+    }
+
+    /**
+     * Aplica transición automática de estado basado en el tiempo
+     */
+    private fun applyAutoStatusTransition(packageItem: Package): Package {
+        // Si ya está entregado o cancelado, no cambiar
+        if (packageItem.status == PackageStatus.DELIVERED ||
+            packageItem.status == PackageStatus.CANCELLED) {
+            return packageItem
+        }
+
+        val currentTime = Timestamp.now().seconds
+        val createdAt = packageItem.createdAt.seconds
+        val hoursSinceCreation = TimeUnit.SECONDS.toHours(currentTime - createdAt)
+
+        val newStatus = when (packageItem.status) {
+            PackageStatus.PENDING -> {
+                // Después de 4 horas, pasa a EN TRÁNSITO
+                if (hoursSinceCreation >= 4) {
+                    PackageStatus.IN_TRANSIT
+                } else {
+                    PackageStatus.PENDING
+                }
+            }
+            PackageStatus.IN_TRANSIT -> {
+                // Después de 2 días (48 horas), pasa a ENTREGADO
+                val daysSinceCreation = TimeUnit.SECONDS.toDays(currentTime - createdAt)
+                if (daysSinceCreation >= 2) {
+                    PackageStatus.DELIVERED
+                } else {
+                    PackageStatus.IN_TRANSIT
+                }
+            }
+            else -> packageItem.status
+        }
+
+        // Solo retornar paquete modificado si cambió el estado
+        return if (newStatus != packageItem.status) {
+            packageItem.copy(status = newStatus)
+        } else {
+            packageItem
+        }
+    }
+
+    /**
+     * Obtiene el estado original de un paquete desde la lista original
+     */
+    private fun getOriginalStatus(originalPackages: List<Package>, packageId: String): String {
+        return originalPackages.find { it.id == packageId }?.status ?: ""
+    }
+
+    /**
+     * Actualiza el estado de un paquete en segundo plano
+     */
+    private fun updatePackageStatusInBackground(packageId: String, newStatus: String) {
+        viewModelScope.launch {
+            try {
+                repository.updatePackageStatus(packageId, newStatus)
+                println("✅ Estado automático actualizado: $packageId → $newStatus")
+            } catch (e: Exception) {
+                println("❌ Error en actualización automática: ${e.message}")
             }
         }
     }
@@ -56,7 +148,20 @@ class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewMode
 
             try {
                 val result = repository.getPackageById(packageId)
-                _selectedPackageState.value = result
+
+                // Aplicar transición automática también al cargar individualmente
+                if (result is Result.Success) {
+                    val updatedPackage = applyAutoStatusTransition(result.data)
+                    if (updatedPackage.status != result.data.status) {
+                        // Actualizar en base de datos si cambió
+                        updatePackageStatusInBackground(packageId, updatedPackage.status)
+                        _selectedPackageState.value = Result.Success(updatedPackage)
+                    } else {
+                        _selectedPackageState.value = result
+                    }
+                } else {
+                    _selectedPackageState.value = result
+                }
             } catch (e: Exception) {
                 _selectedPackageState.value = Result.Error(e)
             } finally {
@@ -90,7 +195,7 @@ class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewMode
     }
 
     /**
-     * Actualiza el estado de un paquete.
+     * Actualiza el estado de un paquete (manual).
      */
     fun updatePackageStatus(packageId: String, newStatus: String) {
         viewModelScope.launch {

@@ -1,4 +1,4 @@
-// PackageDetailScreen.kt - VERSIÓN CON MAPA
+// PackageDetailScreen.kt - VERSIÓN CON BOTONES DE ACCIÓN
 package com.ucb.deliveryapp.ui.screens.packages
 
 import android.app.Application
@@ -23,6 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.ucb.deliveryapp.R
 import com.ucb.deliveryapp.data.entity.Package
+import com.ucb.deliveryapp.data.entity.PackageStatus
 import com.ucb.deliveryapp.ui.screens.MapboxMapView
 import com.ucb.deliveryapp.viewmodel.PackageViewModel
 import com.ucb.deliveryapp.viewmodel.UserViewModel
@@ -47,7 +48,11 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
     val packageState by packageViewModel.selectedPackageState.collectAsState()
     val loadingState by packageViewModel.loadingState.collectAsState()
 
-    // Observar el usuario actual como en ProfileScreen
+    // Estados para los diálogos de confirmación
+    var showDeliveredDialog by remember { mutableStateOf(false) }
+    var showCancelDialog by remember { mutableStateOf(false) }
+
+    // Observar el usuario actual
     val currentUser by userViewModel.currentUser.collectAsState()
 
     // Cargar el paquete y el usuario cuando se abre la pantalla
@@ -88,7 +93,8 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -117,7 +123,12 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
                             PackageDetailContent(
                                 packageItem = packageItem,
                                 currentUserName = currentUser?.username ?: "Usuario",
-                                navController = navController
+                                navController = navController,
+                                onDeliveredClick = { showDeliveredDialog = true },
+                                onCancelClick = { showCancelDialog = true },
+                                snackbarHostState = snackbarHostState,
+                                scope = scope,
+                                packageViewModel = packageViewModel
                             )
                         }
                         is com.ucb.deliveryapp.util.Result.Error -> {
@@ -144,6 +155,154 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
                 }
             }
         }
+
+        // ✅ DIÁLOGO DE CONFIRMACIÓN PARA "ENTREGADO"
+        if (showDeliveredDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeliveredDialog = false },
+                title = {
+                    Text(
+                        text = "Confirmar Entrega",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "¿Estás seguro de que el paquete ha sido entregado en perfectas condiciones?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Black,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = "• Verifica que el paquete no tenga daños\n" +
+                                    "• Confirma que el contenido esté completo\n" +
+                                    "• Asegúrate de que sea el paquete correcto",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeliveredDialog = false
+                            scope.launch {
+                                when (val state = packageState) {
+                                    is com.ucb.deliveryapp.util.Result.Success -> {
+                                        packageViewModel.updatePackageStatus(
+                                            state.data.id,
+                                            PackageStatus.DELIVERED
+                                        )
+                                        snackbarHostState.showSnackbar("✅ Paquete marcado como entregado")
+                                        // Refrescar los datos
+                                        packageViewModel.loadPackageById(packageId)
+                                    }
+                                    else -> {
+                                        snackbarHostState.showSnackbar("❌ Error al actualizar el estado")
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF00A76D),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Sí, confirmar entrega")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showDeliveredDialog = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF00A76D)
+                        )
+                    ) {
+                        Text("Cancelar")
+                    }
+                },
+                containerColor = Color.White
+            )
+        }
+
+        // ✅ DIÁLOGO DE CONFIRMACIÓN PARA "CANCELAR"
+        if (showCancelDialog) {
+            AlertDialog(
+                onDismissRequest = { showCancelDialog = false },
+                title = {
+                    Text(
+                        text = "Cancelar Paquete",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "¿Estás seguro de que deseas cancelar este paquete?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Black,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = "• Se enviará un comprobante de cancelación a tu correo electrónico\n" +
+                                    "• Pueden aplicarse cargos por cancelación según las políticas\n" +
+                                    "• Esta acción no se puede deshacer",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showCancelDialog = false
+                            scope.launch {
+                                when (val state = packageState) {
+                                    is com.ucb.deliveryapp.util.Result.Success -> {
+                                        packageViewModel.updatePackageStatus(
+                                            state.data.id,
+                                            PackageStatus.CANCELLED
+                                        )
+                                        snackbarHostState.showSnackbar("✅ Paquete cancelado exitosamente")
+                                        // Refrescar los datos
+                                        packageViewModel.loadPackageById(packageId)
+                                    }
+                                    else -> {
+                                        snackbarHostState.showSnackbar("❌ Error al cancelar el paquete")
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD32F2F),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Sí, cancelar paquete")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showCancelDialog = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFD32F2F)
+                        )
+                    ) {
+                        Text("No, mantener paquete")
+                    }
+                },
+                containerColor = Color.White
+            )
+        }
     }
 }
 
@@ -151,7 +310,12 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
 fun PackageDetailContent(
     packageItem: Package,
     currentUserName: String,
-    navController: NavController
+    navController: NavController,
+    onDeliveredClick: () -> Unit,
+    onCancelClick: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    packageViewModel: PackageViewModel
 ) {
     // Extraer información de las notas
     val (precioCotizado, tipoEnvio, originPoint, destinationPoint) = extractInfoFromNotes(packageItem.notes)
@@ -205,7 +369,7 @@ fun PackageDetailContent(
             }
         }
 
-        // ✅ NUEVO: MAPA CON RUTA
+        // MAPA CON RUTA
         if (originPoint != null && destinationPoint != null) {
             Card(
                 modifier = Modifier
@@ -331,6 +495,114 @@ fun PackageDetailContent(
                 }
             }
         }
+
+        // ✅ BOTONES DE ACCIÓN (solo mostrar si el paquete no está entregado ni cancelado)
+        if (packageItem.status != PackageStatus.DELIVERED && packageItem.status != PackageStatus.CANCELLED) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Acciones del Paquete",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // BOTÓN "ENTREGADO" (VERDE)
+                        Button(
+                            onClick = onDeliveredClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00A76D),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 4.dp,
+                                pressedElevation = 8.dp
+                            )
+                        ) {
+                            Text(
+                                text = "Marcar como Entregado",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // BOTÓN "CANCELAR" (ROJO)
+                        Button(
+                            onClick = onCancelClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFD32F2F),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 4.dp,
+                                pressedElevation = 8.dp
+                            )
+                        ) {
+                            Text(
+                                text = "Cancelar Paquete",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // ✅ NOTA INFORMATIVA
+                    Text(
+                        text = "Nota: Estas acciones actualizarán el estado del paquete y pueden generar notificaciones por correo electrónico.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+            }
+        } else {
+            // ✅ MENSAJE CUANDO EL PAQUETE YA ESTÁ ENTREGADO O CANCELADO
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (packageItem.status == PackageStatus.DELIVERED) {
+                            "✅ Este paquete ya fue entregado"
+                        } else {
+                            "❌ Este paquete fue cancelado"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        // ✅ ESPACIO FINAL PARA SCROLL
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -359,7 +631,7 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-// ✅ FUNCIÓN ACTUALIZADA PARA EXTRAER COORDENADAS
+// ✅ FUNCIÓN PARA EXTRAER COORDENADAS
 private fun extractInfoFromNotes(notes: String?): Quadruple<String, String, Point?, Point?> {
     var precioCotizado = ""
     var tipoEnvio = ""
@@ -404,7 +676,7 @@ data class Quadruple<out A, out B, out C, out D>(
     val fourth: D
 )
 
-// ✅ FUNCIÓN PARA PARSEAR COORDENADAS (LA MISMA DE HOME SCREEN)
+// ✅ FUNCIÓN PARA PARSEAR COORDENADAS
 private fun parseCoordinatesFromString(s: String?): Point? {
     if (s.isNullOrBlank()) return null
     val cleaned = s.trim().replace("\\s+".toRegex(), "")
