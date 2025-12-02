@@ -1,3 +1,4 @@
+// MapboxMapView.kt - VERSIÓN CORREGIDA
 package com.ucb.deliveryapp.ui.screens
 
 import android.util.Log
@@ -26,6 +27,7 @@ import com.mapbox.maps.extension.style.layers.addLayer
 import com.mapbox.maps.extension.style.layers.getLayer
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.maps.plugin.scalebar.scalebar
+import com.mapbox.maps.plugin.gestures.gestures
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,11 +42,12 @@ fun MapboxMapView(
     origin: Point? = null,
     destination: Point? = null,
     showMarkers: Boolean = true,
+    allowDestinationSelection: Boolean = false,
+    onDestinationSelected: (Point) -> Unit = { _ -> },
     onRouteInfo: (etaMinutes: Int, distanceKm: Double) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    val token = remember { context.getString(com.ucb.deliveryapp.R.string.mapbox_access_token) }
-
+    val token = context.getString(com.ucb.deliveryapp.R.string.mapbox_access_token)
     val mapInitOptions = remember { MapInitOptions(context) }
     val mapView = remember { MapView(context, mapInitOptions) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -67,12 +70,32 @@ fun MapboxMapView(
         }
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier) { mv ->
-        mv.getMapboxMap().loadStyleUri(Style.MAPBOX_STREETS) { style ->
-            mv.scalebar.enabled = true
-            mv.location.enabled = true
+    // Configurar clics en el mapa para selección
+    LaunchedEffect(allowDestinationSelection) {
+        if (allowDestinationSelection) {
+            mapView.gestures.addOnMapClickListener { point ->
+                // ✅ CORREGIDO: Usar las propiedades correctas del punto
+                val selectedPoint = Point.fromLngLat(point.longitude(), point.latitude())
+                onDestinationSelected(selectedPoint)
+                true
+            }
         }
     }
+
+    AndroidView(
+        factory = { mapView },
+        modifier = modifier,
+        update = { mv ->
+            mv.getMapboxMap().loadStyleUri(Style.MAPBOX_STREETS) { style ->
+                mv.scalebar.enabled = true
+                mv.location.enabled = true
+                mv.location.updateSettings {
+                    enabled = true
+                    pulsingEnabled = true
+                }
+            }
+        }
+    )
 }
 
 // Solicitar ruta y dibujarla en el MapView
@@ -86,13 +109,19 @@ private fun requestAndDrawRoute(
     val client = OkHttpClient()
     CoroutineScope(Dispatchers.IO).launch {
         try {
+            // ✅ CORREGIDO: Usar longitude() y latitude() correctamente
             val coords = "${origin.longitude()},${origin.latitude()};${destination.longitude()},${destination.latitude()}"
             val url = "https://api.mapbox.com/directions/v5/mapbox/driving-traffic/$coords" +
                     "?overview=full&geometries=polyline&steps=false&access_token=$accessToken"
 
+            Log.d("MapboxRoute", "Solicitando ruta: $url")
+
             val req = Request.Builder().url(url).get().build()
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                if (!resp.isSuccessful) {
+                    Log.e("MapboxRoute", "Error HTTP: ${resp.code}")
+                    throw Exception("HTTP ${resp.code}")
+                }
                 val body = resp.body?.string() ?: throw Exception("Empty body")
                 val json = JSONObject(body)
                 val routes = json.getJSONArray("routes")
@@ -100,7 +129,7 @@ private fun requestAndDrawRoute(
                 val route0 = routes.getJSONObject(0)
                 val durationSec = route0.getDouble("duration")
                 val distanceM = route0.getDouble("distance")
-                val geometry = route0.getString("geometry") // polyline encoded
+                val geometry = route0.getString("geometry")
 
                 val coordsList = decodePolyline(geometry)
 
@@ -109,6 +138,7 @@ private fun requestAndDrawRoute(
                     val mins = (durationSec / 60.0).roundToInt()
                     val km = distanceM / 1000.0
                     onRouteInfo(mins, km)
+                    Log.d("MapboxRoute", "Ruta dibujada: ${mins} min, ${km} km")
                 }
             }
         } catch (e: Exception) {
@@ -120,7 +150,6 @@ private fun requestAndDrawRoute(
 // Dibujar la ruta en el MapView
 private fun drawRouteOnMap(mapView: MapView, points: List<Point>) {
     mapView.getMapboxMap().getStyle { style ->
-
         val sourceId = "route-source-compose"
         val layerId = "route-layer-compose"
 
@@ -143,6 +172,7 @@ private fun drawRouteOnMap(mapView: MapView, points: List<Point>) {
         if (style.getLayer(layerId) == null) {
             val routeLayer = LineLayer(layerId, sourceId)
                 .lineWidth(6.0)
+                .lineColor("#00A76D")
                 .lineCap(LineCap.ROUND)
 
             style.addLayer(routeLayer)

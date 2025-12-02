@@ -18,15 +18,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // ELIMINAR la configuración de Room (ya no la necesitamos)
-        // javaCompileOptions {
-        //     annotationProcessorOptions {
-        //         arguments += mapOf(
-        //             "room.schemaLocation" to "$projectDir/sampledata"
-        //         )
-        //     }
-        // }
     }
 
     buildTypes {
@@ -108,6 +99,8 @@ dependencies {
     implementation("com.mapbox.maps:android:10.14.0")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation(libs.play.services.maps)
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // --- UI Clásica (RecyclerView y CardView) ---
     implementation("androidx.recyclerview:recyclerview:1.3.2")
