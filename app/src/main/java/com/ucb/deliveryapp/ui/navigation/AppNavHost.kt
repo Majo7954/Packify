@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.ucb.deliveryapp.ui.screens.home.ConfirmationScreen
 import com.ucb.deliveryapp.ui.screens.home.HomeScreen
 import com.ucb.deliveryapp.ui.screens.login.LoginScreen
 import com.ucb.deliveryapp.ui.screens.menu.MenuScreen
@@ -23,7 +24,8 @@ object Routes {
     const val SUPPORT = "support"
     const val PROFILE = "profile"
     const val PACKAGES = "packages"
-    const val CREATE_PACKAGE = "create_package" // NUEVA RUTA AGREGADA
+    const val CREATE_PACKAGE = "create_package"
+    const val CONFIRMATION = "confirmation" // NUEVA RUTA AGREGADA
 }
 
 @Composable
@@ -75,6 +77,17 @@ fun AppNavHost(navController: NavHostController) {
             CreatePackageComposeScreen(
                 onNavigateToMenu = { navController.navigate(Routes.MENU) },
                 navController = navController // ✅ AGREGAR este parámetro
+            )
+        }
+        // ✅ NUEVA RUTA PARA PANTALLA DE CONFIRMACIÓN
+        composable(Routes.CONFIRMATION) {
+            ConfirmationScreen(
+                navController = navController,
+                onNavigateToPackages = {
+                    navController.navigate(Routes.PACKAGES) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
+                }
             )
         }
         composable("package_detail/{packageId}") { backStackEntry ->

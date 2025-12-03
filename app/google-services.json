@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "130743832520",
+    "project_id": "packify-delivery",
+    "storage_bucket": "packify-delivery.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:130743832520:android:e08b3964c1f7e4eb2dfafd",
+        "android_client_info": {
+          "package_name": "com.ucb.deliveryapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCguNDlvPgffdk7sGpj4bUYsY9eC_J8DZ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

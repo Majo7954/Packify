@@ -34,6 +34,13 @@
             </intent-filter>
         </activity>
 
+        <!-- LOGIN ACTIVITY -->
+        <activity
+            android:name=".ui.screens.login.LoginActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Deliveryapp" />
+
         <!-- MAIN ACTIVITY - Actividad principal -->
         <activity
             android:name=".MainActivity"

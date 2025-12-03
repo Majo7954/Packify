@@ -70,7 +70,7 @@ class SplashActivity : ComponentActivity() {
         } catch (e: Exception) {
             // ✅ MANEJO SEGURO: Si hay error, va al login por seguridad
             e.printStackTrace()
-            val intent = Intent(this, LoginActivity::class.java)
+            val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
             finish()
         }
