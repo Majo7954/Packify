@@ -1,4 +1,3 @@
-// ConfirmationScreen.kt
 package com.ucb.deliveryapp.ui.screens.home
 
 import androidx.compose.foundation.background
@@ -19,18 +18,16 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.ucb.deliveryapp.ui.navigation.Routes
 
-// Colores personalizados
 val verdeDelivery = Color(0xFF00A76D)
 val amarilloDelivery = Color(0xFFFAC10C)
 
 @Composable
 fun ConfirmationScreen(
-    navController: NavController, // ✅ AGREGAR NavController como parámetro
+    navController: NavController,
     onNavigateToPackages: () -> Unit
 ) {
     val context = LocalContext.current
 
-    // ✅ FONDO VERDE PARA TODA LA PANTALLA
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -43,7 +40,6 @@ fun ConfirmationScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // ✅ BLOQUE BLANCO EN EL MEDIO
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -59,7 +55,6 @@ fun ConfirmationScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // ✅ ÍCONO DE CHECK EN FONDO VERDE
                     Box(
                         modifier = Modifier
                             .size(80.dp)
@@ -70,27 +65,25 @@ fun ConfirmationScreen(
                             imageVector = Icons.Default.Check,
                             contentDescription = "Confirmado",
                             modifier = Modifier.size(40.dp),
-                            tint = Color.White // ✅ Check blanco
+                            tint = Color.White
                         )
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ TEXTO PRINCIPAL EN NEGRO
                     Text(
                         "Tu pedido ha sido realizado con éxito.",
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         ),
-                        color = Color.Black, // ✅ Texto negro
+                        color = Color.Black,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ TEXTO "REALICE EL SEGUIMIENTO" EN NEGRO
                     Text(
                         "Realice el seguimiento:",
                         style = MaterialTheme.typography.bodyLarge.copy(
@@ -104,12 +97,9 @@ fun ConfirmationScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ✅ BOTÓN AMARILLO QUE NAVEGA A PACKAGE LIST SCREEN
                     Button(
                         onClick = {
-                            // ✅ NAVEGAR A PACKAGE LIST SCREEN (COMPOSE) - igual que en MenuScreen
                             navController.navigate(Routes.PACKAGES) {
-                                // Limpiar el stack de navegación para que no pueda volver atrás
                                 popUpTo(Routes.HOME) { inclusive = true }
                             }
                         },
@@ -133,7 +123,6 @@ fun ConfirmationScreen(
                 }
             }
 
-            // ✅ ESPACIO EN BLANCO ABAJO DEL BLOQUE
             Spacer(modifier = Modifier.height(40.dp))
         }
     }

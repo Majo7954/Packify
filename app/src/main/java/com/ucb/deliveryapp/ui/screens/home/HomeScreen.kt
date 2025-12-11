@@ -1,4 +1,3 @@
-// HomeScreen.kt - VERSIÓN CON VALIDACIONES COMPLETAS PARA PLAY STORE
 package com.ucb.deliveryapp.ui.screens.home
 
 import android.Manifest
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.List
@@ -46,34 +46,132 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.tasks.await
 import com.ucb.deliveryapp.ui.navigation.Routes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import kotlin.math.*
 
-// ==================== CLASES PARA VALIDACIÓN ====================
-
-/**
- * Resultado de validación con mensajes específicos
- */
 sealed class ValidationResult {
     object Success : ValidationResult()
     data class Error(val message: String) : ValidationResult()
 }
 
-/**
- * Datos del formulario para validar
- */
 data class PackageFormData(
     val origin: String,
     val destination: String,
     val weight: String,
     val size: String = "",
-    val quotedPrice: String = "",
     val withinDepartment: Boolean = false
 )
 
-// ==================== FUNCIONES DE VALIDACIÓN ====================
+object MapboxGeocodingService {
 
-/**
- * Valida formato de coordenadas (latitud, longitud)
- */
+    suspend fun reverseGeocode(context: android.content.Context, point: Point): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val accessToken = context.getString(com.ucb.deliveryapp.R.string.mapbox_access_token)
+                val lng = point.longitude()
+                val lat = point.latitude()
+
+                val url = "https://api.mapbox.com/geocoding/v5/mapbox.places/$lng,$lat.json" +
+                        "?access_token=$accessToken" +
+                        "&types=place,locality,neighborhood,address,poi" +
+                        "&language=es"
+
+                val client = OkHttpClient()
+                val request = Request.Builder()
+                    .url(url)
+                    .get()
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+
+                if (response.isSuccessful && !responseBody.isNullOrEmpty()) {
+                    parseGeocodingResponse(responseBody)
+                } else {
+                    "Ubicación desconocida"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                "Ubicación desconocida"
+            }
+        }
+    }
+
+    private fun parseGeocodingResponse(jsonString: String): String {
+        return try {
+            val json = JSONObject(jsonString)
+            val features = json.getJSONArray("features")
+
+            if (features.length() > 0) {
+                var bestResult = ""
+                var bestRelevance = -1.0
+
+                for (i in 0 until features.length()) {
+                    val feature = features.getJSONObject(i)
+                    val relevance = feature.optDouble("relevance", 0.0)
+                    val placeName = feature.optString("place_name_es", feature.optString("place_name", ""))
+                    val placeType = feature.getJSONArray("place_type").optString(0, "")
+
+                    val typeScore = when (placeType) {
+                        "address" -> 4
+                        "poi" -> 3
+                        "place" -> 2
+                        "locality" -> 1
+                        else -> 0
+                    }
+
+                    val totalScore = relevance + typeScore
+
+                    if (totalScore > bestRelevance && placeName.isNotBlank()) {
+                        bestRelevance = totalScore
+                        bestResult = simplifyAddress(placeName)
+                    }
+                }
+
+                if (bestResult.isNotBlank()) {
+                    bestResult
+                } else {
+                    "Ubicación desconocida"
+                }
+            } else {
+                "Ubicación desconocida"
+            }
+        } catch (e: Exception) {
+            "Error obteniendo dirección"
+        }
+    }
+
+    private fun simplifyAddress(fullAddress: String): String {
+        val parts = fullAddress.split(",").map { it.trim() }
+
+        return when {
+            parts.size > 2 && parts.last().equals("Bolivia", ignoreCase = true) -> {
+                parts.dropLast(1).joinToString(", ")
+            }
+            parts.size > 3 -> {
+                parts.take(3).joinToString(", ")
+            }
+            else -> fullAddress
+        }
+    }
+}
+
+private fun calculatePrice(distanceKm: Double, weightKg: Double): Double {
+    val baseRatePerKm = 2.50
+    val ratePerKg = 5.0
+    val minimumPrice = 20.0
+
+    val distancePrice = distanceKm * baseRatePerKm
+    val weightPrice = weightKg * ratePerKg
+    val totalPrice = distancePrice + weightPrice
+
+    return maxOf(totalPrice, minimumPrice)
+}
+
 private fun isValidCoordinateFormat(coordinate: String): Boolean {
     return try {
         val parts = coordinate.split(",")
@@ -82,16 +180,12 @@ private fun isValidCoordinateFormat(coordinate: String): Boolean {
         val lat = parts[0].trim().toDouble()
         val lng = parts[1].trim().toDouble()
 
-        // Coordenadas válidas: latitud entre -90 y 90, longitud entre -180 y 180
         lat in -90.0..90.0 && lng in -180.0..180.0
     } catch (e: Exception) {
         false
     }
 }
 
-/**
- * Valida que sea un número positivo
- */
 private fun isValidPositiveNumber(value: String, maxValue: Double = Double.MAX_VALUE): Boolean {
     return try {
         val num = value.toDouble()
@@ -101,82 +195,55 @@ private fun isValidPositiveNumber(value: String, maxValue: Double = Double.MAX_V
     }
 }
 
-/**
- * Valida que sea un número decimal válido (para precio)
- */
-private fun isValidDecimalNumber(value: String): Boolean {
-    return try {
-        value.toDouble()
-        true
-    } catch (e: NumberFormatException) {
-        false
-    }
-}
-
-/**
- * Valida que el tamaño no exceda límites razonables
- */
 private fun isValidSize(size: String): Boolean {
-    return size.length <= 50 // Máximo 50 caracteres
+    return size.length <= 50
 }
 
-/**
- * Valida todos los campos del formulario de paquete
- */
-private fun validatePackageForm(data: PackageFormData): ValidationResult {
-    // 1. Validar origen (obligatorio y formato coordenadas)
-    if (data.origin.isBlank()) {
-        return ValidationResult.Error("El origen es obligatorio")
-    }
-    if (!isValidCoordinateFormat(data.origin)) {
-        return ValidationResult.Error("Formato de origen inválido.\nEjemplo: -16.5000, -68.1500")
+private fun validatePackageForm(
+    originPoint: Point?,
+    destinationPoint: Point?,
+    weight: String,
+    size: String
+): ValidationResult {
+    if (originPoint == null) {
+        return ValidationResult.Error("No se pudo obtener tu ubicación actual")
     }
 
-    // 2. Validar destino (obligatorio y formato coordenadas)
-    if (data.destination.isBlank()) {
-        return ValidationResult.Error("El destino es obligatorio")
-    }
-    if (!isValidCoordinateFormat(data.destination)) {
-        return ValidationResult.Error("Formato de destino inválido.\nEjemplo: -16.5000, -68.1500")
+    if (destinationPoint == null) {
+        return ValidationResult.Error("Selecciona un destino en el mapa")
     }
 
-    // 3. Validar que origen y destino no sean iguales
-    if (data.origin.trim() == data.destination.trim()) {
-        return ValidationResult.Error("El origen y destino no pueden ser iguales")
+    val distance = calculateDistance(originPoint, destinationPoint)
+    if (distance < 0.001) {
+        return ValidationResult.Error("El origen y destino deben ser lugares diferentes")
     }
 
-    // 4. Validar peso (obligatorio, positivo, límite 100kg)
-    if (data.weight.isBlank()) {
+    if (weight.isBlank()) {
         return ValidationResult.Error("El peso es obligatorio")
     }
-    if (!isValidPositiveNumber(data.weight, 100.0)) {
-        return ValidationResult.Error("El peso debe ser un número positivo\nMáximo 100 kg")
+    if (!isValidPositiveNumber(weight, 100.0)) {
+        return ValidationResult.Error("El peso debe ser entre 0.1 y 100 kg")
     }
 
-    // 5. Validar tamaño (opcional pero con límites)
-    if (data.size.isNotBlank() && !isValidSize(data.size)) {
-        return ValidationResult.Error("El tamaño es demasiado largo\nMáximo 50 caracteres")
-    }
-
-    // 6. Validar precio cotizado (opcional pero válido)
-    if (data.quotedPrice.isNotBlank()) {
-        if (!isValidDecimalNumber(data.quotedPrice)) {
-            return ValidationResult.Error("El precio debe ser un número válido")
-        }
-        try {
-            val price = data.quotedPrice.toDouble()
-            if (price < 0) {
-                return ValidationResult.Error("El precio no puede ser negativo")
-            }
-            if (price > 10000) { // Límite razonable de precio
-                return ValidationResult.Error("El precio máximo es $10,000")
-            }
-        } catch (e: Exception) {
-            return ValidationResult.Error("Formato de precio inválido")
-        }
+    if (size.isNotBlank() && !isValidSize(size)) {
+        return ValidationResult.Error("El tamaño no puede superar los 50 caracteres")
     }
 
     return ValidationResult.Success
+}
+
+private fun calculateDistance(point1: Point, point2: Point): Double {
+    val lat1 = Math.toRadians(point1.latitude())
+    val lon1 = Math.toRadians(point1.longitude())
+    val lat2 = Math.toRadians(point2.latitude())
+    val lon2 = Math.toRadians(point2.longitude())
+
+    val dlon = lon2 - lon1
+    val dlat = lat2 - lat1
+    val a = sin(dlat / 2).pow(2) + cos(lat1) * cos(lat2) * sin(dlon / 2).pow(2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    return 6371 * c
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -192,33 +259,51 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
     var currentLocation by remember { mutableStateOf<Point?>(null) }
     var isGettingLocation by remember { mutableStateOf(false) }
 
-    var origin by remember { mutableStateOf("") }
-    var destination by remember { mutableStateOf("") }
+    var internalOrigin by remember { mutableStateOf("") }
+    var internalDestination by remember { mutableStateOf("") }
+
     var weight by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("") }
     var quotedPrice by remember { mutableStateOf("") }
     var withinDepartment by remember { mutableStateOf(false) }
     var showConfirmationDialog by remember { mutableStateOf(false) }
-    var showConfirmationScreen by remember { mutableStateOf(false) }
     var showMapForDestinationSelection by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
-    // Estados para validación en tiempo real
     var originError by remember { mutableStateOf<String?>(null) }
     var destinationError by remember { mutableStateOf<String?>(null) }
     var weightError by remember { mutableStateOf<String?>(null) }
     var sizeError by remember { mutableStateOf<String?>(null) }
-    var priceError by remember { mutableStateOf<String?>(null) }
 
-    // ✅ MEJOR MANEJO DE PERMISOS
     var locationPermissionGranted by remember { mutableStateOf(false) }
     var shouldShowPermissionRationale by remember { mutableStateOf(false) }
 
-    // ✅ ESTADOS PARA MAPBOX
     var routeInfoText by remember { mutableStateOf<String?>(null) }
+    var calculatedDistance by remember { mutableStateOf<Double?>(null) }
+    var calculatedEta by remember { mutableStateOf<Int?>(null) }
     var originPoint by remember { mutableStateOf<Point?>(null) }
     var destinationPoint by remember { mutableStateOf<Point?>(null) }
+
+    var originAddress by remember { mutableStateOf<String?>(null) }
+    var destinationAddress by remember { mutableStateOf<String?>(null) }
+    var isGeocodingOrigin by remember { mutableStateOf(false) }
+    var isGeocodingDestination by remember { mutableStateOf(false) }
+
+    LaunchedEffect(calculatedDistance, weight) {
+        if (calculatedDistance != null && weight.isNotBlank()) {
+            try {
+                val weightValue = weight.toDouble()
+                val distanceValue = calculatedDistance ?: 0.0
+                val price = calculatePrice(distanceValue, weightValue)
+                quotedPrice = "%.2f".format(price)
+            } catch (e: Exception) {
+                quotedPrice = ""
+            }
+        } else {
+            quotedPrice = ""
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -231,9 +316,12 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                 getCurrentLocationWithChecks(context)?.let { location ->
                     currentLocation = Point.fromLngLat(location.longitude, location.latitude)
                     originPoint = currentLocation
-                    origin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
-                    // Limpiar error al obtener ubicación automática
+                    internalOrigin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
                     originError = null
+
+                    isGeocodingOrigin = true
+                    originAddress = MapboxGeocodingService.reverseGeocode(context, currentLocation!!)
+                    isGeocodingOrigin = false
                 }
             }
         } else {
@@ -244,7 +332,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
     var currentUserId by remember { mutableStateOf<String?>(null) }
 
-    // ✅ EFECTO MEJORADO
     LaunchedEffect(Unit) {
         currentUserId = loginDataStore.getUserId() ?: "default_user"
 
@@ -255,8 +342,12 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
             getCurrentLocationWithChecks(context)?.let { location ->
                 currentLocation = Point.fromLngLat(location.longitude, location.latitude)
                 originPoint = currentLocation
-                origin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
+                internalOrigin = "${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
                 originError = null
+
+                isGeocodingOrigin = true
+                originAddress = MapboxGeocodingService.reverseGeocode(context, currentLocation!!)
+                isGeocodingOrigin = false
             }
             isGettingLocation = false
         } else {
@@ -267,10 +358,30 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     }
 
-    // Eliminar el bloque de showConfirmationScreen (ya no se usa)
-    // if (showConfirmationScreen) { ... }
+    LaunchedEffect(internalOrigin) {
+        if (internalOrigin.isNotBlank() && isValidCoordinateFormat(internalOrigin)) {
+            val point = parseCoordinatesFromString(internalOrigin)
+            if (point != null) {
+                isGeocodingOrigin = true
+                originAddress = MapboxGeocodingService.reverseGeocode(context, point)
+                isGeocodingOrigin = false
+                originPoint = point
+            }
+        }
+    }
 
-    // ✅ DIALOGO PARA SELECCIÓN EN MAPA
+    LaunchedEffect(internalDestination) {
+        if (internalDestination.isNotBlank() && isValidCoordinateFormat(internalDestination)) {
+            val point = parseCoordinatesFromString(internalDestination)
+            if (point != null) {
+                isGeocodingDestination = true
+                destinationAddress = MapboxGeocodingService.reverseGeocode(context, point)
+                isGeocodingDestination = false
+                destinationPoint = point
+            }
+        }
+    }
+
     if (showMapForDestinationSelection) {
         AlertDialog(
             onDismissRequest = { showMapForDestinationSelection = false },
@@ -300,14 +411,23 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             allowDestinationSelection = true,
                             onDestinationSelected = { point ->
                                 destinationPoint = point
-                                destination = "${"%.6f".format(point.latitude())}, ${"%.6f".format(point.longitude())}"
+                                internalDestination = "${"%.6f".format(point.latitude())}, ${"%.6f".format(point.longitude())}"
+                                destinationAddress = null
                                 showMapForDestinationSelection = false
-                                // Validar destino automáticamente
-                                if (isValidCoordinateFormat(destination)) {
-                                    destinationError = null
-                                }
+                                destinationError = null
+
                                 scope.launch {
-                                    snackbarHostState.showSnackbar("📍 Destino seleccionado")
+                                    try {
+                                        isGeocodingDestination = true
+                                        val address = MapboxGeocodingService.reverseGeocode(context, point)
+                                        destinationAddress = address
+                                        isGeocodingDestination = false
+                                        snackbarHostState.showSnackbar("📍 Destino seleccionado: ${address.take(30)}...")
+                                    } catch (e: Exception) {
+                                        isGeocodingDestination = false
+                                        destinationAddress = "Ubicación seleccionada"
+                                        snackbarHostState.showSnackbar("📍 Destino seleccionado")
+                                    }
                                 }
                             }
                         )
@@ -392,12 +512,12 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         )
                     }
 
-                    // ✅ MAPA PRINCIPAL
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
                             .clip(RoundedCornerShape(12.dp))
+                            .clickable { }
                     ) {
                         if (locationPermissionGranted) {
                             if (isGettingLocation) {
@@ -408,6 +528,8 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                                     origin = originPoint,
                                     destination = destinationPoint,
                                     onRouteInfo = { etaMinutes, distanceKm ->
+                                        calculatedEta = etaMinutes
+                                        calculatedDistance = distanceKm
                                         routeInfoText = "ETA ≈ ${etaMinutes} min • ${"%.2f".format(distanceKm)} km"
                                     }
                                 )
@@ -417,7 +539,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         }
                     }
 
-                    // ✅ INFO DE RUTA
                     routeInfoText?.let { info ->
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -431,92 +552,188 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ✅ UBICACIÓN ACTUAL CON VALIDACIÓN
-                    CurrentLocationCardWithValidation(
-                        location = origin,
-                        error = originError,
-                        snackbarHostState = snackbarHostState,
-                        scope = scope,
-                        onLocationChange = { newOrigin ->
-                            origin = newOrigin
-                            // Validar en tiempo real
-                            if (newOrigin.isNotBlank() && !isValidCoordinateFormat(newOrigin)) {
-                                originError = "Formato inválido. Usa: latitud, longitud"
-                            } else {
-                                originError = null
-                                originPoint = parseCoordinatesFromString(newOrigin)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (originError != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Tu ubicación actual",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (originError != null) Color(0xFFD32F2F) else Color.Black
+                                )
+                                if (isGeocodingOrigin) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
+
+                            originAddress?.let {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            } ?: run {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = if (isGeocodingOrigin) "Obteniendo dirección..." else "Ubicación no disponible",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+
+                            if (originError != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = originError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFD32F2F)
+                                )
                             }
                         }
-                    )
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ DESTINO CON VALIDACIÓN
-                    DestinationSelectionCardWithValidation(
-                        destination = destination,
-                        error = destinationError,
-                        onTextChange = { newDest ->
-                            destination = newDest
-                            // Validar en tiempo real
-                            if (newDest.isNotBlank() && !isValidCoordinateFormat(newDest)) {
-                                destinationError = "Formato inválido. Usa: latitud, longitud"
-                            } else {
-                                destinationError = null
-                                destinationPoint = parseCoordinatesFromString(newDest)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (destinationError != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Lugar de destino",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (destinationError != null) Color(0xFFD32F2F) else Color.Black,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (destinationError != null) {
+                                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                if (isGeocodingDestination) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                IconButton(
+                                    onClick = {
+                                        if (originPoint != null) {
+                                            showMapForDestinationSelection = true
+                                        } else {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Espera a obtener tu ubicación primero")
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp),
+                                    enabled = !isGeocodingDestination
+                                ) {
+                                    Icon(
+                                        Icons.Default.LocationOn,
+                                        contentDescription = "Seleccionar en mapa",
+                                        tint = if (destinationError != null) Color(0xFFD32F2F) else Color.Black
+                                    )
+                                }
                             }
-                        },
-                        onClear = {
-                            destination = ""
-                            destinationPoint = null
-                            destinationError = null
-                            routeInfoText = null
-                        },
-                        onSelectOnMap = {
-                            if (originPoint != null) {
-                                showMapForDestinationSelection = true
-                            } else {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("📍 Espera a obtener tu ubicación primero")
+
+                            destinationAddress?.let {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            } ?: run {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = if (isGeocodingDestination) "Obteniendo dirección..."
+                                    else if (destinationError != null) "Selecciona un destino en el mapa"
+                                    else "No seleccionado",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (destinationError != null) Color(0xFFD32F2F) else Color.Gray
+                                )
+                            }
+
+                            if (destinationError != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = destinationError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFD32F2F)
+                                )
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = {
+                                        if (originPoint != null) {
+                                            showMapForDestinationSelection = true
+                                        } else {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Espera a obtener tu ubicación primero")
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF00A76D)
+                                    )
+                                ) {
+                                    Text("Seleccionar destino en el mapa", color = Color.White)
                                 }
                             }
                         }
-                    )
+                    }
 
-                    // ✅ BOTONES PARA CALCULAR RUTA
                     Spacer(modifier = Modifier.height(8.dp))
+
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = {
-                                // Validar antes de calcular ruta
                                 if (destinationPoint != null && originPoint != null) {
                                     scope.launch {
-                                        snackbarHostState.showSnackbar("✅ Calculando ruta...")
+                                        snackbarHostState.showSnackbar("Calculando ruta...")
                                     }
                                 } else {
                                     val validation = validatePackageForm(
-                                        PackageFormData(
-                                            origin = origin,
-                                            destination = destination,
-                                            weight = if (weight.isNotBlank()) weight else "1",
-                                            size = size,
-                                            quotedPrice = quotedPrice,
-                                            withinDepartment = withinDepartment
-                                        )
+                                        originPoint = originPoint,
+                                        destinationPoint = destinationPoint,
+                                        weight = if (weight.isNotBlank()) weight else "1",
+                                        size = size
                                     )
 
                                     when (validation) {
                                         is ValidationResult.Success -> {
-                                            val parsedDest = parseCoordinatesFromString(destination)
-                                            if (originPoint != null && parsedDest != null) {
-                                                destinationPoint = parsedDest
+                                            if (originPoint != null && destinationPoint != null) {
                                                 scope.launch {
-                                                    snackbarHostState.showSnackbar("✅ Calculando ruta...")
+                                                    snackbarHostState.showSnackbar("Calculando ruta...")
                                                 }
                                             }
                                         }
                                         is ValidationResult.Error -> {
                                             scope.launch {
-                                                snackbarHostState.showSnackbar("❌ ${validation.message}")
+                                                snackbarHostState.showSnackbar("${validation.message}")
                                             }
                                         }
                                     }
@@ -525,40 +742,43 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF00A76D)
-                            )
+                            ),
+                            enabled = destinationPoint != null && originPoint != null
                         ) {
                             Text("Calcular ruta", color = Color.White)
                         }
                         Spacer(Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = {
-                                destination = ""
+                                internalDestination = ""
                                 destinationPoint = null
+                                destinationAddress = null
                                 destinationError = null
                                 routeInfoText = null
+                                calculatedDistance = null
+                                calculatedEta = null
                                 scope.launch {
-                                    snackbarHostState.showSnackbar("Destino limpiado")
+                                    snackbarHostState.showSnackbar("Destino limpio")
                                 }
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = Color(0xFF00A76D)
-                            )
+                            ),
+                            enabled = destinationPoint != null
                         ) {
-                            Text("Limpiar")
+                            Text("Limpiar", color = Color(0xFF00A76D))
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ✅ PESO CON VALIDACIÓN
                     EditFieldCardWithValidation(
                         label = "Peso (kg)",
                         value = weight,
                         error = weightError,
                         onValueChange = { newWeight ->
                             weight = newWeight
-                            // Validar en tiempo real
                             if (newWeight.isNotBlank()) {
                                 if (!isValidPositiveNumber(newWeight, 100.0)) {
                                     weightError = "Peso inválido. Máx: 100 kg"
@@ -579,14 +799,12 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ TAMAÑO CON VALIDACIÓN
                     EditFieldCardWithValidation(
-                        label = "Tamaño",
+                        label = "Tamaño (descripción)",
                         value = size,
                         error = sizeError,
                         onValueChange = { newSize ->
                             size = newSize
-                            // Validar en tiempo real
                             if (newSize.isNotBlank() && !isValidSize(newSize)) {
                                 sizeError = "Máximo 50 caracteres"
                             } else {
@@ -603,42 +821,78 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ✅ PRECIO COTIZADO CON VALIDACIÓN
-                    EditFieldCardWithValidation(
-                        label = "Precio Cotizado ($)",
-                        value = quotedPrice,
-                        error = priceError,
-                        onValueChange = { newPrice ->
-                            quotedPrice = newPrice
-                            // Validar en tiempo real
-                            if (newPrice.isNotBlank()) {
-                                if (!isValidDecimalNumber(newPrice)) {
-                                    priceError = "Precio inválido"
-                                } else {
-                                    try {
-                                        val price = newPrice.toDouble()
-                                        if (price < 0) {
-                                            priceError = "No puede ser negativo"
-                                        } else if (price > 10000) {
-                                            priceError = "Máximo $10,000"
-                                        } else {
-                                            priceError = null
-                                        }
-                                    } catch (e: Exception) {
-                                        priceError = "Número inválido"
-                                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF80D4B6)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Precio Calculado (Bs.)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Black
+                                )
+                                if (calculatedDistance != null && weight.isNotBlank()) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "(${"%.1f".format(calculatedDistance)} km × Bs. 2.50/km + ${weight}kg × Bs. 5/kg)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Black.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Normal
+                                    )
                                 }
-                            } else {
-                                priceError = null
                             }
-                        },
-                        onClear = {
-                            quotedPrice = ""
-                            priceError = null
-                        },
-                        isNumber = true,
-                        isRequired = false
-                    )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = quotedPrice,
+                                onValueChange = { },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = {
+                                    Text(
+                                        if (calculatedDistance == null || weight.isBlank())
+                                            "Calcula la ruta e ingresa el peso"
+                                        else
+                                            "Calculando...",
+                                        color = Color.Gray
+                                    )
+                                },
+                                singleLine = true,
+                                readOnly = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.Black,
+                                    unfocusedTextColor = Color.Black,
+                                    focusedBorderColor = Color.White,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.7f),
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White,
+                                    cursorColor = Color.Transparent,
+                                    focusedPlaceholderColor = Color.Gray,
+                                    unfocusedPlaceholderColor = Color.Gray,
+                                    disabledTextColor = Color.Black,
+                                    disabledContainerColor = Color.White,
+                                    disabledBorderColor = Color.White.copy(alpha = 0.7f),
+                                    disabledPlaceholderColor = Color.Gray
+                                ),
+                                enabled = false
+                            )
+
+                            if (quotedPrice.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Precio mínimo garantizado: Bs. 20.00",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF00A76D),
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                )
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -659,23 +913,38 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ✅ BOTÓN DE CONFIRMAR CON VALIDACIÓN COMPLETA
                     Button(
                         onClick = {
-                            // Validar todos los campos
                             val validation = validatePackageForm(
-                                PackageFormData(
-                                    origin = origin,
-                                    destination = destination,
-                                    weight = weight,
-                                    size = size,
-                                    quotedPrice = quotedPrice,
-                                    withinDepartment = withinDepartment
-                                )
+                                originPoint = originPoint,
+                                destinationPoint = destinationPoint,
+                                weight = weight,
+                                size = size
                             )
 
                             when (validation) {
                                 is ValidationResult.Success -> {
+                                    if (quotedPrice.isBlank() && calculatedDistance != null && weight.isNotBlank()) {
+                                        try {
+                                            val weightValue = weight.toDouble()
+                                            val distanceValue = calculatedDistance ?: 0.0
+                                            val price = calculatePrice(distanceValue, weightValue)
+                                            quotedPrice = "%.2f".format(price)
+                                        } catch (e: Exception) {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Error calculando el precio")
+                                            }
+                                            return@Button
+                                        }
+                                    }
+
+                                    if (quotedPrice.isBlank()) {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Calcula la ruta primero")
+                                        }
+                                        return@Button
+                                    }
+
                                     showConfirmationDialog = true
                                 }
                                 is ValidationResult.Error -> {
@@ -689,7 +958,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             .fillMaxWidth()
                             .height(48.dp),
                         shape = RoundedCornerShape(24.dp),
-                        enabled = true,
+                        enabled = originPoint != null && destinationPoint != null && weight.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFFAC10C)
                         )
@@ -718,7 +987,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
         }
     )
 
-    // ✅ DIALOGO DE CONFIRMACIÓN
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { if (!isLoading) showConfirmationDialog = false },
@@ -731,7 +999,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         color = Color.Black)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Información detallada del paquete
                     Text("Detalles del Paquete:",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -739,9 +1006,11 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    Text("• Origen: $origin", style = MaterialTheme.typography.bodySmall,
+                    Text("• Origen: ${originAddress ?: "Ubicación actual"}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color.Black)
-                    Text("• Destino: $destination", style = MaterialTheme.typography.bodySmall,
+                    Text("• Destino: ${destinationAddress ?: "Destino seleccionado"}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color.Black)
                     Text("• Peso: $weight kg", style = MaterialTheme.typography.bodySmall,
                         color = Color.Black)
@@ -752,7 +1021,7 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                     }
 
                     if (quotedPrice.isNotBlank()) {
-                        Text("• Precio cotizado: $$quotedPrice", style = MaterialTheme.typography.bodySmall,
+                        Text("• Precio: Bs. $quotedPrice", style = MaterialTheme.typography.bodySmall,
                             color = Color.Black)
                     }
 
@@ -766,7 +1035,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                             color = Color(0xFF00A76D))
                     }
 
-                    // ✅ NOTA PARA PLAY STORE (transparencia)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "Nota: Al confirmar, aceptas nuestros términos de servicio y políticas de privacidad.",
@@ -784,16 +1052,16 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
                         currentUserId?.let { userId ->
                             try {
                                 val newPackage = createPackageFromForm(
-                                    origin, destination, weight, size,
+                                    originPoint!!,
+                                    destinationPoint!!,
+                                    weight, size,
                                     quotedPrice, withinDepartment, userId
                                 )
                                 packageViewModel.createPackage(newPackage)
                                 scope.launch {
                                     delay(1000)
                                     isLoading = false
-                                    // Navegar a ConfirmationScreen usando navController
                                     navController.navigate(Routes.CONFIRMATION) {
-                                        // Limpiar el stack de navegación para que no pueda volver atrás con back
                                         popUpTo(Routes.HOME) { inclusive = false }
                                     }
                                     snackbarHostState.showSnackbar("Paquete creado exitosamente")
@@ -833,191 +1101,6 @@ fun HomeScreen(onNavigateToMenu: () -> Unit, navController: NavController) {
             },
             containerColor = Color.White
         )
-    }
-}
-
-// ==================== COMPONENTES CON VALIDACIÓN ====================
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CurrentLocationCardWithValidation(
-    location: String,
-    error: String?,
-    snackbarHostState: SnackbarHostState,
-    scope: kotlinx.coroutines.CoroutineScope,
-    onLocationChange: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (error != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "📍 Tu ubicación actual",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (error != null) Color(0xFFD32F2F) else Color.Black
-                )
-                if (error != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            if (error != null) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFD32F2F),
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = onLocationChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Obteniendo ubicación...", color = Color.Gray) },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White,
-                        unfocusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White.copy(alpha = 0.7f),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        cursorColor = Color.Black,
-                        focusedPlaceholderColor = Color.Gray,
-                        unfocusedPlaceholderColor = Color.Gray,
-                        errorBorderColor = Color(0xFFD32F2F),
-                        errorContainerColor = Color(0xFFFFEBEE),
-                        errorCursorColor = Color(0xFFD32F2F),
-                        errorTextColor = Color(0xFFD32F2F),
-                        errorPlaceholderColor = Color.Gray
-                    )
-                )
-                if (location.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("📍 Ubicación actual: $location")
-                            }
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Ubicación actual",
-                            tint = if (error != null) Color(0xFFD32F2F) else Color.Black
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DestinationSelectionCardWithValidation(
-    destination: String,
-    error: String?,
-    onTextChange: (String) -> Unit,
-    onClear: () -> Unit,
-    onSelectOnMap: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (error != null) Color(0xFFFFEBEE) else Color(0xFF80D4B6)
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "🎯 Lugar de destino",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (error != null) Color(0xFFD32F2F) else Color.Black,
-                    modifier = Modifier.weight(1f)
-                )
-                if (error != null) {
-                    Text("⚠️", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                IconButton(
-                    onClick = onSelectOnMap,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = "Seleccionar en mapa",
-                        tint = if (error != null) Color(0xFFD32F2F) else Color.Black
-                    )
-                }
-            }
-
-            if (error != null) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFD32F2F),
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = destination,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ej: -16.5000, -68.1500", color = Color.Gray) },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White,
-                        unfocusedBorderColor = if (error != null) Color(0xFFD32F2F) else Color.White.copy(alpha = 0.7f),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        cursorColor = Color.Black,
-                        focusedPlaceholderColor = Color.Gray,
-                        unfocusedPlaceholderColor = Color.Gray,
-                        errorBorderColor = Color(0xFFD32F2F),
-                        errorContainerColor = Color(0xFFFFEBEE),
-                        errorCursorColor = Color(0xFFD32F2F),
-                        errorTextColor = Color(0xFFD32F2F),
-                        errorPlaceholderColor = Color.Gray
-                    )
-                )
-                if (destination.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onClear,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Limpiar",
-                            tint = if (error != null) Color(0xFFD32F2F) else Color.Black
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1120,8 +1203,6 @@ private fun EditFieldCardWithValidation(
     }
 }
 
-// ==================== COMPONENTES AUXILIARES ====================
-
 @Composable
 private fun PermissionWarningCard(onActivate: () -> Unit) {
     Card(
@@ -1216,8 +1297,6 @@ private fun NoPermissionMapPlaceholder() {
     }
 }
 
-// ==================== FUNCIONES AUXILIARES ====================
-
 private suspend fun getCurrentLocationWithChecks(context: android.content.Context): Location? {
     val hasFineLocation = ContextCompat.checkSelfPermission(
         context,
@@ -1274,8 +1353,8 @@ private fun parseCoordinatesFromString(s: String?): Point? {
 }
 
 private fun createPackageFromForm(
-    origin: String,
-    destination: String,
+    originPoint: Point,
+    destinationPoint: Point,
     weight: String,
     size: String,
     quotedPrice: String,
@@ -1285,13 +1364,13 @@ private fun createPackageFromForm(
     val priority = if (withinDepartment) PackagePriority.NORMAL else PackagePriority.EXPRESS
 
     val notes = buildString {
-        append("Origen: $origin")
-        append("\nDestino: $destination")
+        append("Origen: ${originPoint.latitude()}, ${originPoint.longitude()}")
+        append("\nDestino: ${destinationPoint.latitude()}, ${destinationPoint.longitude()}")
         if (size.isNotBlank()) {
             append("\nTamaño: $size")
         }
         if (quotedPrice.isNotBlank()) {
-            append("\nPrecio cotizado: $quotedPrice")
+            append("\nPrecio calculado: Bs. $quotedPrice")
         }
         append(if (withinDepartment) "\nEnvío dentro del departamento" else "\nEnvío nacional")
     }
@@ -1305,8 +1384,8 @@ private fun createPackageFromForm(
     return Package(
         trackingNumber = generateTrackingNumber(),
         senderName = "Usuario Actual",
-        recipientName = "Destinatario en $destination",
-        recipientAddress = destination,
+        recipientName = "Destinatario",
+        recipientAddress = destinationPoint.toString(),
         recipientPhone = "Por definir",
         weight = weightValue,
         status = PackageStatus.PENDING,

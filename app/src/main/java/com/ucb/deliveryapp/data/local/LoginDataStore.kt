@@ -45,6 +45,14 @@ class LoginDataStore(private val context: Context) {
         }
     }
 
+    suspend fun isLoggedIn(): Boolean {
+        return context.dataStore.data
+            .map { preferences ->
+                preferences[IS_LOGGED_IN] ?: "false" == "true"
+            }
+            .first()
+    }
+
     val isUserLoggedIn: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[IS_LOGGED_IN] == "true"

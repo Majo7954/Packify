@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ucb.deliveryapp.MainActivity
 import com.ucb.deliveryapp.R
-import com.ucb.deliveryapp.ui.screens.login.LoginActivity
 import kotlinx.coroutines.delay
 
 @SuppressLint("CustomSplashScreen")
@@ -34,7 +33,6 @@ class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ✅ USA EL MISMO SHAREDPREFERENCES QUE LOGINACTIVITY
         sharedPreferences = getSharedPreferences("user_prefs", MODE_PRIVATE)
 
         setContent {
@@ -46,29 +44,20 @@ class SplashActivity : ComponentActivity() {
     fun SplashScreenContent() {
         LaunchedEffect(Unit) {
             delay(SPLASH_DURATION)
-            checkUserSessionAndNavigate()
+            navigateToMainActivity()
         }
 
         SplashScreen()
     }
 
-    private fun checkUserSessionAndNavigate() {
+    private fun navigateToMainActivity() {
         try {
-            // ✅ MISMA LÓGICA QUE TU ESTRUCTURA ACTUAL
-            val isLoggedIn = sharedPreferences.getBoolean("is_logged_in", false)
-
-            val intent = if (isLoggedIn) {
-                // ✅ USUARIO YA LOGUEADO: Va directo a MainActivity (HomeScreen)
-                Intent(this, MainActivity::class.java)
-            } else {
-                // ❌ USUARIO NO LOGUEADO: Va a LoginActivity
-                Intent(this, LoginActivity::class.java)
-            }
-
+            // ✅ Siempre vamos a MainActivity
+            // MainActivity decidirá si mostrar login o home
+            val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
             finish()
         } catch (e: Exception) {
-            // ✅ MANEJO SEGURO: Si hay error, va al login por seguridad
             e.printStackTrace()
             val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)

@@ -1,4 +1,3 @@
-// PackageDetailScreen.kt - VERSIÓN CON BOTONES DE ACCIÓN
 package com.ucb.deliveryapp.ui.screens.packages
 
 import android.app.Application
@@ -25,12 +24,15 @@ import com.ucb.deliveryapp.R
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackageStatus
 import com.ucb.deliveryapp.ui.screens.MapboxMapView
+import com.ucb.deliveryapp.ui.screens.home.MapboxGeocodingService
 import com.ucb.deliveryapp.viewmodel.PackageViewModel
 import com.ucb.deliveryapp.viewmodel.UserViewModel
 import com.ucb.deliveryapp.viewmodel.UserViewModelFactory
 import com.ucb.deliveryapp.viewmodel.getPackageViewModelFactory
 import com.mapbox.geojson.Point
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -48,17 +50,42 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
     val packageState by packageViewModel.selectedPackageState.collectAsState()
     val loadingState by packageViewModel.loadingState.collectAsState()
 
-    // Estados para los diálogos de confirmación
     var showDeliveredDialog by remember { mutableStateOf(false) }
     var showCancelDialog by remember { mutableStateOf(false) }
 
-    // Observar el usuario actual
     val currentUser by userViewModel.currentUser.collectAsState()
 
-    // Cargar el paquete y el usuario cuando se abre la pantalla
+    var originAddress by remember { mutableStateOf<String?>(null) }
+    var destinationAddress by remember { mutableStateOf<String?>(null) }
+    var isGeocodingOrigin by remember { mutableStateOf(false) }
+    var isGeocodingDestination by remember { mutableStateOf(false) }
+
     LaunchedEffect(packageId) {
         packageViewModel.loadPackageById(packageId)
         userViewModel.loadCurrentUser()
+    }
+
+    LaunchedEffect(packageState) {
+        when (val state = packageState) {
+            is com.ucb.deliveryapp.util.Result.Success -> {
+                val packageItem = state.data
+                val (_, _, originPoint, destinationPoint) = extractInfoFromNotes(packageItem.notes)
+
+                originPoint?.let { point ->
+                    isGeocodingOrigin = true
+                    originAddress = MapboxGeocodingService.reverseGeocode(context, point)
+                    isGeocodingOrigin = false
+                }
+
+                destinationPoint?.let { point ->
+                    isGeocodingDestination = true
+                    destinationAddress = MapboxGeocodingService.reverseGeocode(context, point)
+                    isGeocodingDestination = false
+                }
+            }
+            else -> {
+            }
+        }
     }
 
     Scaffold(
@@ -128,7 +155,11 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
                                 onCancelClick = { showCancelDialog = true },
                                 snackbarHostState = snackbarHostState,
                                 scope = scope,
-                                packageViewModel = packageViewModel
+                                packageViewModel = packageViewModel,
+                                originAddress = originAddress,
+                                destinationAddress = destinationAddress,
+                                isGeocodingOrigin = isGeocodingOrigin,
+                                isGeocodingDestination = isGeocodingDestination
                             )
                         }
                         is com.ucb.deliveryapp.util.Result.Error -> {
@@ -156,7 +187,6 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
             }
         }
 
-        // ✅ DIÁLOGO DE CONFIRMACIÓN PARA "ENTREGADO"
         if (showDeliveredDialog) {
             AlertDialog(
                 onDismissRequest = { showDeliveredDialog = false },
@@ -230,7 +260,6 @@ fun PackageDetailScreen(navController: NavController, packageId: String) {
             )
         }
 
-        // ✅ DIÁLOGO DE CONFIRMACIÓN PARA "CANCELAR"
         if (showCancelDialog) {
             AlertDialog(
                 onDismissRequest = { showCancelDialog = false },
@@ -315,9 +344,12 @@ fun PackageDetailContent(
     onCancelClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
     scope: kotlinx.coroutines.CoroutineScope,
-    packageViewModel: PackageViewModel
+    packageViewModel: PackageViewModel,
+    originAddress: String?,
+    destinationAddress: String?,
+    isGeocodingOrigin: Boolean,
+    isGeocodingDestination: Boolean
 ) {
-    // Extraer información de las notas
     val (precioCotizado, tipoEnvio, originPoint, destinationPoint) = extractInfoFromNotes(packageItem.notes)
 
     Column(
@@ -369,7 +401,6 @@ fun PackageDetailContent(
             }
         }
 
-        // MAPA CON RUTA
         if (originPoint != null && destinationPoint != null) {
             Card(
                 modifier = Modifier
@@ -389,7 +420,6 @@ fun PackageDetailContent(
                     }
                 )
 
-                // Mostrar info de ruta si está disponible
                 routeInfo?.let { info ->
                     Box(
                         modifier = Modifier
@@ -408,7 +438,6 @@ fun PackageDetailContent(
                 }
             }
         } else {
-            // Fallback si no hay coordenadas
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -432,6 +461,110 @@ fun PackageDetailContent(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF80D4B6)
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Ubicación de Origen",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black
+                    )
+                    if (isGeocodingOrigin) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+
+                originAddress?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Black,
+                        fontWeight = FontWeight.Medium
+                    )
+                } ?: run {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (isGeocodingOrigin) "Obteniendo dirección..." else "Dirección no disponible",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+
+                originPoint?.let { point ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Coordenadas: ${"%.6f".format(point.latitude())}, ${"%.6f".format(point.longitude())}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF80D4B6)
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Lugar de Destino",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black
+                    )
+                    if (isGeocodingDestination) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+
+                destinationAddress?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Black,
+                        fontWeight = FontWeight.Medium
+                    )
+                } ?: run {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (isGeocodingDestination) "Obteniendo dirección..." else "Dirección no disponible",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+
+                destinationPoint?.let { point ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Coordenadas: ${"%.6f".format(point.latitude())}, ${"%.6f".format(point.longitude())}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
@@ -439,7 +572,7 @@ fun PackageDetailContent(
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(
-                    text = "Información de Envío",
+                    text = "Información del Envío",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.Black,
@@ -448,15 +581,9 @@ fun PackageDetailContent(
 
                 InfoRow("👤 Remitente:", currentUserName)
                 InfoRow("👤 Destinatario:", packageItem.recipientName)
-                InfoRow("📍 Dirección:", packageItem.recipientAddress)
+                InfoRow("📞 Teléfono:", packageItem.recipientPhone)
 
-                // Mostrar coordenadas si están disponibles
-                if (originPoint != null) {
-                    InfoRow("📍 Origen:", "${originPoint.latitude()}, ${originPoint.longitude()}")
-                }
-                if (destinationPoint != null) {
-                    InfoRow("🎯 Destino:", "${destinationPoint.latitude()}, ${destinationPoint.longitude()}")
-                }
+                // Ya no mostramos coordenadas aquí, solo direcciones amigables
             }
         }
 
@@ -476,19 +603,19 @@ fun PackageDetailContent(
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                InfoRow("⚖️ Peso:", "${packageItem.weight} kg")
-                InfoRow("🚚 Prioridad:", getPriorityText(packageItem.priority))
+                InfoRow("Peso:", "${packageItem.weight} kg")
+                InfoRow("Prioridad:", getPriorityText(packageItem.priority))
 
                 if (precioCotizado.isNotBlank()) {
-                    InfoRow("💰 Precio Cotizado:", precioCotizado)
+                    InfoRow("Precio Cotizado:", precioCotizado)
                 }
 
                 if (tipoEnvio.isNotBlank()) {
-                    InfoRow("🌍 Tipo de Envío:", tipoEnvio)
+                    InfoRow("Tipo de Envío:", tipoEnvio)
                 }
 
-                InfoRow("📅 Fecha estimada:", formatDate(packageItem.estimatedDeliveryDate))
-                InfoRow("🕐 Fecha de creación:", formatDate(packageItem.createdAt))
+                InfoRow("Fecha estimada:", formatDate(packageItem.estimatedDeliveryDate))
+                InfoRow("Fecha de creación:", formatDate(packageItem.createdAt))
 
                 if (packageItem.deliveredAt != null) {
                     InfoRow("✅ Entregado el:", formatDate(packageItem.deliveredAt))
@@ -496,7 +623,6 @@ fun PackageDetailContent(
             }
         }
 
-        // ✅ BOTONES DE ACCIÓN (solo mostrar si el paquete no está entregado ni cancelado)
         if (packageItem.status != PackageStatus.DELIVERED && packageItem.status != PackageStatus.CANCELLED) {
             Card(
                 modifier = Modifier
@@ -520,7 +646,6 @@ fun PackageDetailContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // BOTÓN "ENTREGADO" (VERDE)
                         Button(
                             onClick = onDeliveredClick,
                             modifier = Modifier.weight(1f),
@@ -541,7 +666,6 @@ fun PackageDetailContent(
                             )
                         }
 
-                        // BOTÓN "CANCELAR" (ROJO)
                         Button(
                             onClick = onCancelClick,
                             modifier = Modifier.weight(1f),
@@ -563,7 +687,6 @@ fun PackageDetailContent(
                         }
                     }
 
-                    // ✅ NOTA INFORMATIVA
                     Text(
                         text = "Nota: Estas acciones actualizarán el estado del paquete y pueden generar notificaciones por correo electrónico.",
                         style = MaterialTheme.typography.bodySmall,
@@ -573,7 +696,6 @@ fun PackageDetailContent(
                 }
             }
         } else {
-            // ✅ MENSAJE CUANDO EL PAQUETE YA ESTÁ ENTREGADO O CANCELADO
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -601,7 +723,6 @@ fun PackageDetailContent(
             }
         }
 
-        // ✅ ESPACIO FINAL PARA SCROLL
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
@@ -631,7 +752,6 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-// ✅ FUNCIÓN PARA EXTRAER COORDENADAS
 private fun extractInfoFromNotes(notes: String?): Quadruple<String, String, Point?, Point?> {
     var precioCotizado = ""
     var tipoEnvio = ""
@@ -645,6 +765,9 @@ private fun extractInfoFromNotes(notes: String?): Quadruple<String, String, Poin
     val lines = notes.split("\n")
     lines.forEach { line ->
         when {
+            line.contains("Precio calculado:") -> {
+                precioCotizado = line.substringAfter("Precio calculado:").trim()
+            }
             line.contains("Precio cotizado:") -> {
                 precioCotizado = line.substringAfter("Precio cotizado:").trim()
             }
@@ -668,7 +791,6 @@ private fun extractInfoFromNotes(notes: String?): Quadruple<String, String, Poin
     return Quadruple(precioCotizado, tipoEnvio, originPoint, destinationPoint)
 }
 
-// ✅ CLASE PARA EL CUÁDRUPLE
 data class Quadruple<out A, out B, out C, out D>(
     val first: A,
     val second: B,
@@ -676,7 +798,6 @@ data class Quadruple<out A, out B, out C, out D>(
     val fourth: D
 )
 
-// ✅ FUNCIÓN PARA PARSEAR COORDENADAS
 private fun parseCoordinatesFromString(s: String?): Point? {
     if (s.isNullOrBlank()) return null
     val cleaned = s.trim().replace("\\s+".toRegex(), "")

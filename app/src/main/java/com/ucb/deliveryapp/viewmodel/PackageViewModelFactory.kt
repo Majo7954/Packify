@@ -2,10 +2,10 @@ package com.ucb.deliveryapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.ucb.deliveryapp.data.repository.PackageRepositoryImpl
+import com.ucb.deliveryapp.domain.repository.PackageRepository
 
 class PackageViewModelFactory(
-    private val packageRepository: PackageRepositoryImpl
+    private val packageRepository: PackageRepository
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -13,6 +13,6 @@ class PackageViewModelFactory(
         if (modelClass.isAssignableFrom(PackageViewModel::class.java)) {
             return PackageViewModel(packageRepository) as T
         }
-        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        throw IllegalArgumentException("Clase ViewModel desconocida: ${modelClass.name}")
     }
 }

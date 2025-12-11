@@ -2,13 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permisos necesarios -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Permisos de ubicación para MapLibre -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
 
     <application
         android:allowBackup="true"
@@ -22,6 +22,14 @@
         android:theme="@style/Theme.Deliveryapp"
         tools:targetApi="31">
 
+        <service
+            android:name=".ui.notifications.FirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- SPLASH ACTIVITY - Pantalla de inicio (LAUNCHER) -->
         <activity
             android:name=".ui.screens.splash.SplashActivity"
@@ -34,12 +42,6 @@
             </intent-filter>
         </activity>
 
-        <!-- LOGIN ACTIVITY -->
-        <activity
-            android:name=".ui.screens.login.LoginActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.Deliveryapp" />
 
         <!-- MAIN ACTIVITY - Actividad principal -->
         <activity

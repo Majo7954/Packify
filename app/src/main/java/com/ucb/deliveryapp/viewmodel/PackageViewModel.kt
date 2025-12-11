@@ -6,14 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.Timestamp
 import com.ucb.deliveryapp.data.entity.Package
 import com.ucb.deliveryapp.data.entity.PackageStatus
-import com.ucb.deliveryapp.data.repository.PackageRepositoryImpl
+import com.ucb.deliveryapp.domain.repository.PackageRepository  // <-- CAMBIAR AQUÍ
 import com.ucb.deliveryapp.util.Result
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
-class PackageViewModel(private val repository: PackageRepositoryImpl) : ViewModel() {
+class PackageViewModel(private val repository: PackageRepository) : ViewModel() {  // <-- CAMBIAR AQUÍ
 
     // Estados usando StateFlow (más moderno que LiveData para Compose)
     private val _packagesState = MutableStateFlow<Result<List<Package>>?>(null)

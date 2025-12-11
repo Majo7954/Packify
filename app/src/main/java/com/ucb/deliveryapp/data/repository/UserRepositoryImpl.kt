@@ -1,6 +1,8 @@
 package com.ucb.deliveryapp.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -13,7 +15,9 @@ import com.ucb.deliveryapp.util.Result
 import kotlinx.coroutines.tasks.await
 import java.security.MessageDigest
 
-class UserRepositoryImpl(context: Context) : UserRepository {
+class UserRepositoryImpl(
+    private val context: Context
+) : UserRepository {
 
     private val auth: FirebaseAuth = Firebase.auth
     private val db: FirebaseFirestore = Firebase.firestore
@@ -24,8 +28,26 @@ class UserRepositoryImpl(context: Context) : UserRepository {
         const val STATIC_SALT = "Packify_Delivery_App_2024_Secure_Salt"
     }
 
+    // Verificador de conexión a internet
+    private fun isOnline(): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    }
+
     override suspend fun registerUser(user: User): Result<Boolean> {
         return try {
+            // Verificar conexión
+            if (!isOnline()) {
+                return Result.Error(
+                    Exception("Sin conexión a internet. No se puede registrar.")
+                )
+            }
+
             // Verificar si el email ya existe
             val emailQuery = usersCollection.whereEqualTo("email", user.email).get().await()
             if (!emailQuery.isEmpty) {
@@ -59,6 +81,13 @@ class UserRepositoryImpl(context: Context) : UserRepository {
 
     override suspend fun login(email: String, password: String): Result<User> {
         return try {
+            // Verificar conexión
+            if (!isOnline()) {
+                return Result.Error(
+                    Exception("Sin conexión a internet. No se puede iniciar sesión.")
+                )
+            }
+
             // Autenticar con Firebase Auth
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
             val userId = authResult.user?.uid ?: throw Exception("User not found")
@@ -86,10 +115,22 @@ class UserRepositoryImpl(context: Context) : UserRepository {
     }
 
     override suspend fun getCurrentUser(): User? {
+        // Esto puede funcionar offline si el usuario ya estaba autenticado
         val currentUser = auth.currentUser
         return currentUser?.let { user ->
             try {
-                usersCollection.document(user.uid).get().await().toObject(User::class.java)
+                // Intentar obtener de Firestore si hay conexión
+                if (isOnline()) {
+                    usersCollection.document(user.uid).get().await().toObject(User::class.java)
+                } else {
+                    // Retornar datos básicos de auth si no hay conexión
+                    User(
+                        id = user.uid,
+                        email = user.email ?: "",
+                        username = user.displayName ?: "Usuario",
+                        password = ""
+                    )
+                }
             } catch (e: Exception) {
                 null
             }
@@ -103,6 +144,10 @@ class UserRepositoryImpl(context: Context) : UserRepository {
 
     override suspend fun isEmailRegistered(email: String): Boolean {
         return try {
+            if (!isOnline()) {
+                return false // No se puede verificar sin conexión
+            }
+
             val query = usersCollection.whereEqualTo("email", email).get().await()
             !query.isEmpty
         } catch (e: Exception) {
@@ -112,6 +157,12 @@ class UserRepositoryImpl(context: Context) : UserRepository {
 
     override suspend fun getUserById(userId: String): Result<User> {
         return try {
+            if (!isOnline()) {
+                return Result.Error(
+                    Exception("Sin conexión a internet. No se puede obtener información del usuario.")
+                )
+            }
+
             val user = usersCollection.document(userId).get().await().toObject(User::class.java)
             if (user != null) Result.Success(user)
             else Result.Error(Exception("User not found"))
@@ -120,9 +171,14 @@ class UserRepositoryImpl(context: Context) : UserRepository {
         }
     }
 
-    // Agrega esta función en UserRepositoryImpl.kt
     override suspend fun updateUser(userId: String, updatedUser: User): Result<Boolean> {
         return try {
+            if (!isOnline()) {
+                return Result.Error(
+                    Exception("Sin conexión a internet. No se puede actualizar el perfil.")
+                )
+            }
+
             // Actualizar en Firestore
             usersCollection.document(userId).set(updatedUser).await()
 
