@@ -95,6 +95,8 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-config-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+    androidTestImplementation("com.google.firebase:firebase-firestore:24.10.0")
+    androidTestImplementation("com.google.firebase:firebase-auth:22.3.0")
 
     // ========== JETPACK COMPOSE ==========
     implementation(libs.androidx.core.ktx)

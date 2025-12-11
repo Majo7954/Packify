@@ -1,4 +1,3 @@
-// kotlin+java/com/ucb/deliveryapp/data/entity/Package.kt
 package com.ucb.deliveryapp.data.entity
 
 import com.google.firebase.Timestamp
