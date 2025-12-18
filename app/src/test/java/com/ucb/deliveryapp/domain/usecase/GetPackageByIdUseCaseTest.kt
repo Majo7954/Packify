@@ -1,12 +1,13 @@
 package com.ucb.deliveryapp.domain.usecase
 
-import com.google.firebase.Timestamp
-import com.ucb.deliveryapp.data.entity.Package
-import com.ucb.deliveryapp.data.entity.PackagePriority
-import com.ucb.deliveryapp.data.entity.PackageStatus
-import com.ucb.deliveryapp.domain.repository.PackageRepository
-import com.ucb.deliveryapp.util.Result
+import com.ucb.deliveryapp.core.util.Result
+import com.ucb.deliveryapp.features.packages.domain.model.Package
+import com.ucb.deliveryapp.features.packages.domain.model.PackagePriority
+import com.ucb.deliveryapp.features.packages.domain.model.PackageStatus
+import com.ucb.deliveryapp.features.packages.domain.repository.PackageRepository
+import com.ucb.deliveryapp.features.packages.domain.usecase.GetPackageByIdUseCase
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,10 +19,12 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class GetPackageByIdUseCaseTest {
 
-    private lateinit var getPackageByIdUseCase: GetPackageByIdUseCase
-    private val mockPackageRepository: PackageRepository = mockk()
+    private lateinit var useCase: GetPackageByIdUseCase
+    private val repo: PackageRepository = mockk()
 
     private val testPackageId = "paquete_12345"
+
+    private val now = 1_700_000_000_000L
     private val testPackage = Package(
         id = testPackageId,
         trackingNumber = "UCB987654321",
@@ -32,78 +35,65 @@ class GetPackageByIdUseCaseTest {
         weight = 3.5,
         status = PackageStatus.IN_TRANSIT,
         priority = PackagePriority.EXPRESS,
-        estimatedDeliveryDate = Timestamp.now(),
-        createdAt = Timestamp.now(),
-        deliveredAt = null,
+        estimatedDeliveryAtMillis = now + 172_800_000L,
+        createdAtMillis = now,
+        deliveredAtMillis = null,
         notes = "Paquete test",
         userId = "usuario123"
     )
 
     @Before
     fun setup() {
-        getPackageByIdUseCase = GetPackageByIdUseCase(mockPackageRepository)
+        useCase = GetPackageByIdUseCase(repo)
     }
 
     @Test
     fun `obtener paquete por ID deberia retornar exito con el paquete`() = runTest {
-        // Dado que
-        coEvery {
-            mockPackageRepository.getPackageById(testPackageId)
-        } returns Result.Success(testPackage)
+        coEvery { repo.getPackageById(testPackageId) } returns Result.Success(testPackage)
 
-        // Cuando
-        val resultado = getPackageByIdUseCase(testPackageId)
+        val result = useCase(testPackageId)
 
-        // Entonces
-        assertTrue(resultado is Result.Success)
-        val paquete = (resultado as Result.Success).data
+        assertTrue(result is Result.Success)
+        val paquete = (result as Result.Success).data
         assertEquals(testPackageId, paquete.id)
         assertEquals("UCB987654321", paquete.trackingNumber)
         assertEquals("Remitente Test", paquete.senderName)
+
+        coVerify(exactly = 1) { repo.getPackageById(testPackageId) }
     }
 
     @Test
     fun `obtener paquete por ID deberia retornar error cuando el paquete no existe`() = runTest {
-        // Dado que
-        coEvery {
-            mockPackageRepository.getPackageById(testPackageId)
-        } returns Result.Error(Exception("Paquete no encontrado"))
+        coEvery { repo.getPackageById(testPackageId) } returns Result.Error(Exception("Paquete no encontrado"))
 
-        // Cuando
-        val resultado = getPackageByIdUseCase(testPackageId)
+        val result = useCase(testPackageId)
 
-        // Entonces
-        assertTrue(resultado is Result.Error)
-        assertEquals("Paquete no encontrado", (resultado as Result.Error).exception.message)
+        assertTrue(result is Result.Error)
+        assertEquals("Paquete no encontrado", (result as Result.Error).exception.message)
+
+        coVerify(exactly = 1) { repo.getPackageById(testPackageId) }
     }
 
     @Test
     fun `obtener paquete por ID deberia pasar el packageId correcto al repositorio`() = runTest {
-        // Dado que
         val slotPackageId = slot<String>()
-        coEvery {
-            mockPackageRepository.getPackageById(capture(slotPackageId))
-        } returns Result.Success(testPackage)
+        coEvery { repo.getPackageById(capture(slotPackageId)) } returns Result.Success(testPackage)
 
-        // Cuando
-        getPackageByIdUseCase(testPackageId)
+        useCase(testPackageId)
 
-        // Entonces
         assertEquals(testPackageId, slotPackageId.captured)
+        coVerify(exactly = 1) { repo.getPackageById(any()) }
     }
 
     @Test
     fun `obtener paquete por ID deberia manejar errores de red`() = runTest {
-        // Dado que
-        coEvery {
-            mockPackageRepository.getPackageById(testPackageId)
-        } returns Result.Error(Exception("Timeout de red"))
+        coEvery { repo.getPackageById(testPackageId) } returns Result.Error(Exception("Timeout de red"))
 
-        // Cuando
-        val resultado = getPackageByIdUseCase(testPackageId)
+        val result = useCase(testPackageId)
 
-        // Entonces
-        assertTrue(resultado is Result.Error)
-        assertTrue((resultado as Result.Error).exception.message!!.contains("Timeout"))
+        assertTrue(result is Result.Error)
+        assertTrue((result as Result.Error).exception.message!!.contains("Timeout"))
+
+        coVerify(exactly = 1) { repo.getPackageById(testPackageId) }
     }
 }

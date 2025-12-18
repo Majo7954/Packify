@@ -1,7 +1,8 @@
 package com.ucb.deliveryapp.domain.usecase
 
-import com.ucb.deliveryapp.domain.repository.PackageRepository
-import com.ucb.deliveryapp.util.Result
+import com.ucb.deliveryapp.features.packages.domain.repository.PackageRepository
+import com.ucb.deliveryapp.core.util.Result
+import com.ucb.deliveryapp.features.packages.domain.usecase.MarkAsDeliveredUseCase
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.slot

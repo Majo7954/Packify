@@ -4,151 +4,110 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import androidx.navigation.NavController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.ucb.deliveryapp.data.local.LoginDataStore
-import com.ucb.deliveryapp.ui.navigation.Routes
-import com.ucb.deliveryapp.ui.screens.home.ConfirmationScreen
-import com.ucb.deliveryapp.ui.screens.home.HomeScreen
-import com.ucb.deliveryapp.ui.screens.login.LoginScreen
-import com.ucb.deliveryapp.ui.screens.menu.MenuScreen
-import com.ucb.deliveryapp.ui.screens.packages.PackageListScreen
-import com.ucb.deliveryapp.ui.screens.register.RegisterScreen
-import com.ucb.deliveryapp.ui.screens.support.SupportScreen
-import com.ucb.deliveryapp.ui.screens.profile.ProfileScreen
-import com.ucb.deliveryapp.ui.screens.home.CreatePackageComposeScreen
-import com.ucb.deliveryapp.ui.screens.packages.PackageDetailScreen
+import com.ucb.deliveryapp.core.datastore.LoginDataStore
+import com.ucb.deliveryapp.core.remoteconfig.RemoteConfigManager
+import com.ucb.deliveryapp.features.maintenance.presentation.MaintenanceScreen
+import com.ucb.deliveryapp.navigation.AppNavHost
 import com.ucb.deliveryapp.ui.theme.DeliveryappTheme
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 
-@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        RemoteConfigManager.initialize(this)
+
         setContent {
             DeliveryappTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    DeliveryApp()
+                    DeliveryApp(
+                        initialRouteFromNotification = intent?.getStringExtra("open_route")
+                    )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }
 
 @Composable
-fun DeliveryApp() {
-    val navController = rememberNavController()
+fun DeliveryApp(initialRouteFromNotification: String?) {
     val context = LocalContext.current
     val loginDataStore = remember { LoginDataStore(context) }
 
-    // Estado para verificar si está logueado
+    var showMaintenance by remember { mutableStateOf(false) }
+    var showForceUpdate by remember { mutableStateOf(false) }
+    var requiredVersion by remember { mutableStateOf("") }
     var isLoggedIn by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    // Verificar sesión al inicio
+    var pendingRoute by remember { mutableStateOf(initialRouteFromNotification) }
+
+    val activity = context as ComponentActivity
+    LaunchedEffect(activity.intent) {
+        pendingRoute = activity.intent?.getStringExtra("open_route") ?: pendingRoute
+    }
+
     LaunchedEffect(Unit) {
-        // Esto es una operación de suspensión, la ejecutamos en un coroutine
-        isLoggedIn = loginDataStore.isLoggedIn()
+        delay(500)
+
+        RemoteConfigManager.forceFetch()
+        if (RemoteConfigManager.isMaintenanceMode()) {
+            showMaintenance = true
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        if (RemoteConfigManager.isForceUpdate()) {
+            requiredVersion = RemoteConfigManager.getRequiredVersion()
+            showForceUpdate = true
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        isLoggedIn = runBlocking { loginDataStore.isLoggedIn() }
+        isLoading = false
     }
 
-    // Navegar al login si no está logueado
-    LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn) {
-            // Navegar al login y limpiar el back stack
-            navController.navigate(Routes.LOGIN) {
-                popUpTo(navController.graph.id) {
-                    inclusive = true
-                }
-            }
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF00A76D)),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = Color.White)
         }
+        return
     }
 
-    // Definir el NavHost
-    NavHost(
-        navController = navController,
-        startDestination = if (isLoggedIn) Routes.HOME else Routes.LOGIN
-    ) {
-        composable(Routes.LOGIN) {
-            LoginScreen(
-                onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
-                onLoginSuccess = {
-                    // Actualizar estado y navegar a HOME
-                    isLoggedIn = true
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.LOGIN) { inclusive = true }
-                    }
-                }
-            )
-        }
-        composable(Routes.REGISTER) {
-            RegisterScreen(
-                onRegisterSuccess = {
-                    // Después de registro exitoso, navegar a HOME
-                    isLoggedIn = true
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.LOGIN) { inclusive = true }
-                    }
-                },
-                onNavigateToLogin = {
-                    navController.navigate(Routes.LOGIN) {
-                        popUpTo(Routes.REGISTER) { inclusive = true }
-                    }
-                }
-            )
-        }
-        composable(Routes.HOME) {
-            HomeScreen(
-                onNavigateToMenu = { navController.navigate(Routes.MENU) },
-                navController = navController
-            )
-        }
-        composable(Routes.MENU) {
-            MenuScreen(navController = navController)
-        }
-        composable(Routes.SUPPORT) {
-            SupportScreen(navController = navController)
-        }
-        composable(Routes.PROFILE) {
-            ProfileScreen(navController = navController)
-        }
-        composable(Routes.PACKAGES) {
-            PackageListScreen(navController = navController)
-        }
-        composable(Routes.CREATE_PACKAGE) {
-            CreatePackageComposeScreen(
-                onNavigateToMenu = { navController.navigate(Routes.MENU) },
-                navController = navController
-            )
-        }
-        composable(Routes.CONFIRMATION) {
-            ConfirmationScreen(
-                navController = navController,
-                onNavigateToPackages = {
-                    navController.navigate(Routes.PACKAGES) {
-                        popUpTo(Routes.HOME) { inclusive = true }
-                    }
-                }
-            )
-        }
-        composable("package_detail/{packageId}") { backStackEntry ->
-            val packageId = backStackEntry.arguments?.getString("packageId") ?: ""
-            PackageDetailScreen(
-                navController = navController,
-                packageId = packageId
+    when {
+        showMaintenance -> MaintenanceScreen(isForceUpdate = false)
+        showForceUpdate -> MaintenanceScreen(isForceUpdate = true, requiredVersion = requiredVersion)
+        else -> {
+            AppNavHost(
+                isLoggedIn = isLoggedIn,
+                onLoginStateChange = { loggedIn -> isLoggedIn = loggedIn },
+                pendingRoute = pendingRoute,
+                onPendingRouteHandled = { pendingRoute = null }
             )
         }
     }

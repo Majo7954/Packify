@@ -1,8 +1,9 @@
 package com.ucb.deliveryapp.domain.usecase
 
-import com.ucb.deliveryapp.data.entity.User
-import com.ucb.deliveryapp.domain.repository.UserRepository
-import com.ucb.deliveryapp.util.Result
+import com.ucb.deliveryapp.features.auth.data.remote.dto.UserDto
+import com.ucb.deliveryapp.features.auth.domain.repository.UserRepository
+import com.ucb.deliveryapp.core.util.Result
+import com.ucb.deliveryapp.features.auth.domain.usecase.LoginUseCase
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.slot
@@ -27,7 +28,7 @@ class LoginUseCaseTest {
     fun `iniciar sesion deberia retornar exito cuando las credenciales son validas`() = runTest {
         val email = "test@ucb.edu.bo"
         val password = "password123"
-        val usuarioEsperado = User(
+        val usuarioEsperado = UserDto(
             id = "user123",
             email = email,
             username = "Usuario Test",
@@ -103,7 +104,7 @@ class LoginUseCaseTest {
                 capture(slotPassword)
             )
         } returns Result.Success(
-            User(id = "1", email = email, username = "test", password = "hash")
+            UserDto(id = "1", email = email, username = "test", password = "hash")
         )
 
         loginUseCase(email, password)

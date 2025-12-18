@@ -7,9 +7,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ucb.deliveryapp.ui.navigation.Routes
-import com.ucb.deliveryapp.ui.screens.home.ConfirmationScreen
-import com.ucb.deliveryapp.ui.screens.packages.PackageListScreen
+import com.ucb.deliveryapp.features.home.presentation.ConfirmationScreen
+import com.ucb.deliveryapp.features.packages.presentation.PackageListScreen
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

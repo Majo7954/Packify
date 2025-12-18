@@ -1,12 +1,13 @@
 package com.ucb.deliveryapp.domain.usecase
 
-import com.google.firebase.Timestamp
-import com.ucb.deliveryapp.data.entity.Package
-import com.ucb.deliveryapp.data.entity.PackagePriority
-import com.ucb.deliveryapp.data.entity.PackageStatus
-import com.ucb.deliveryapp.domain.repository.PackageRepository
-import com.ucb.deliveryapp.util.Result
+import com.ucb.deliveryapp.core.util.Result
+import com.ucb.deliveryapp.features.packages.domain.model.Package
+import com.ucb.deliveryapp.features.packages.domain.model.PackagePriority
+import com.ucb.deliveryapp.features.packages.domain.model.PackageStatus
+import com.ucb.deliveryapp.features.packages.domain.repository.PackageRepository
+import com.ucb.deliveryapp.features.packages.domain.usecase.GetUserPackagesUseCase
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,10 +19,12 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class GetUserPackagesUseCaseTest {
 
-    private lateinit var getUserPackagesUseCase: GetUserPackagesUseCase
-    private val mockPackageRepository: PackageRepository = mockk()
+    private lateinit var useCase: GetUserPackagesUseCase
+    private val repo: PackageRepository = mockk()
 
     private val testUserId = "usuario_12345"
+
+    private val now = 1_700_000_000_000L
     private val testPackages = listOf(
         Package(
             id = "pkg1",
@@ -33,9 +36,9 @@ class GetUserPackagesUseCaseTest {
             weight = 2.5,
             status = PackageStatus.PENDING,
             priority = PackagePriority.NORMAL,
-            estimatedDeliveryDate = Timestamp.now(),
-            createdAt = Timestamp.now(),
-            deliveredAt = null,
+            estimatedDeliveryAtMillis = now + 86_400_000L,
+            createdAtMillis = now,
+            deliveredAtMillis = null,
             notes = "Notas 1",
             userId = testUserId
         ),
@@ -49,9 +52,9 @@ class GetUserPackagesUseCaseTest {
             weight = 7.5,
             status = PackageStatus.IN_TRANSIT,
             priority = PackagePriority.EXPRESS,
-            estimatedDeliveryDate = Timestamp.now(),
-            createdAt = Timestamp.now(),
-            deliveredAt = null,
+            estimatedDeliveryAtMillis = now + 172_800_000L,
+            createdAtMillis = now,
+            deliveredAtMillis = null,
             notes = "Notas 2",
             userId = testUserId
         )
@@ -59,58 +62,57 @@ class GetUserPackagesUseCaseTest {
 
     @Before
     fun setup() {
-        getUserPackagesUseCase = GetUserPackagesUseCase(mockPackageRepository)
+        useCase = GetUserPackagesUseCase(repo)
     }
 
     @Test
     fun `obtener paquetes del usuario deberia retornar exito con lista de paquetes`() = runTest {
-        coEvery {
-            mockPackageRepository.getUserPackages(testUserId)
-        } returns Result.Success(testPackages)
+        coEvery { repo.getUserPackages(testUserId) } returns Result.Success(testPackages)
 
-        val resultado = getUserPackagesUseCase(testUserId)
+        val result = useCase(testUserId)
 
-        assertTrue(resultado is Result.Success)
-        val paquetes = (resultado as Result.Success).data
+        assertTrue(result is Result.Success)
+        val paquetes = (result as Result.Success).data
         assertEquals(2, paquetes.size)
         assertEquals("pkg1", paquetes[0].id)
         assertEquals("pkg2", paquetes[1].id)
+
+        coVerify(exactly = 1) { repo.getUserPackages(testUserId) }
     }
 
     @Test
     fun `obtener paquetes deberia retornar lista vacia cuando usuario no tiene paquetes`() = runTest {
-        coEvery {
-            mockPackageRepository.getUserPackages(testUserId)
-        } returns Result.Success(emptyList())
+        coEvery { repo.getUserPackages(testUserId) } returns Result.Success(emptyList())
 
-        val resultado = getUserPackagesUseCase(testUserId)
+        val result = useCase(testUserId)
 
-        assertTrue(resultado is Result.Success)
-        assertTrue((resultado as Result.Success).data.isEmpty())
+        assertTrue(result is Result.Success)
+        assertTrue((result as Result.Success).data.isEmpty())
+
+        coVerify(exactly = 1) { repo.getUserPackages(testUserId) }
     }
 
     @Test
     fun `obtener paquetes deberia retornar error cuando el repositorio falla`() = runTest {
-        val mensajeError = "Error al obtener paquetes"
-        coEvery {
-            mockPackageRepository.getUserPackages(testUserId)
-        } returns Result.Error(Exception(mensajeError))
+        val msg = "Error al obtener paquetes"
+        coEvery { repo.getUserPackages(testUserId) } returns Result.Error(Exception(msg))
 
-        val resultado = getUserPackagesUseCase(testUserId)
+        val result = useCase(testUserId)
 
-        assertTrue(resultado is Result.Error)
-        assertEquals(mensajeError, (resultado as Result.Error).exception.message)
+        assertTrue(result is Result.Error)
+        assertEquals(msg, (result as Result.Error).exception.message)
+
+        coVerify(exactly = 1) { repo.getUserPackages(testUserId) }
     }
 
     @Test
     fun `obtener paquetes deberia pasar el userId correcto al repositorio`() = runTest {
         val slotUserId = slot<String>()
-        coEvery {
-            mockPackageRepository.getUserPackages(capture(slotUserId))
-        } returns Result.Success(emptyList())
+        coEvery { repo.getUserPackages(capture(slotUserId)) } returns Result.Success(emptyList())
 
-        getUserPackagesUseCase(testUserId)
+        useCase(testUserId)
 
         assertEquals(testUserId, slotUserId.captured)
+        coVerify(exactly = 1) { repo.getUserPackages(any()) }
     }
 }

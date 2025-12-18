@@ -1,6 +1,8 @@
 package com.ucb.deliveryapp.data.repository
 
 import android.content.Context
+import com.ucb.deliveryapp.features.auth.data.repository.UserRepositoryImpl
+import com.ucb.deliveryapp.features.auth.domain.repository.UserRepository
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.*
@@ -17,7 +19,6 @@ class UserRepositoryImplTestSimplificado {
             val repositorio = UserRepositoryImpl(mockContext)
             assertNotNull(repositorio)
         } catch (e: Exception) {
-            // Si falla por Firebase, está bien
             assertTrue(true)
         }
     }
@@ -26,7 +27,7 @@ class UserRepositoryImplTestSimplificado {
     fun `repositorio deberia implementar la interfaz UserRepository`() {
         try {
             val repositorio = UserRepositoryImpl(mockk(relaxed = true))
-            assertTrue(repositorio is com.ucb.deliveryapp.domain.repository.UserRepository)
+            assertTrue(repositorio is UserRepository)
         } catch (e: Exception) {
             assertTrue(true)
         }
@@ -34,7 +35,6 @@ class UserRepositoryImplTestSimplificado {
 
     @Test
     fun `test de estructura basica`() {
-        // Test simple que siempre pasa
         assertTrue(true)
     }
 }

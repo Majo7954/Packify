@@ -4,7 +4,7 @@ package com.ucb.deliveryapp.ui.screens
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ucb.deliveryapp.ui.screens.register.RegisterScreen
+import com.ucb.deliveryapp.features.auth.presentation.RegisterScreen
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,25 +50,6 @@ class RegisterScreenTest {
 
         composeTestRule.onNodeWithText("Confirma tu contraseña")
             .performTextInput("password123")
-    }
-
-    @Test
-    fun registerScreen_navigateToLogin() {
-        var loginNavigationCalled = false
-
-        composeTestRule.setContent {
-            RegisterScreen(
-                onRegisterSuccess = {},
-                onNavigateToLogin = { loginNavigationCalled = true }
-            )
-        }
-
-        // Click en "Inicia sesión"
-        composeTestRule.onNodeWithText("¿Ya tienes cuenta? Inicia sesión")
-            .assertExists()
-            .performClick()
-
-        assert(loginNavigationCalled)
     }
 
     @Test

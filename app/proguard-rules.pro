@@ -1,21 +1,69 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ========== CONFIGURACIÓN BÁSICA ==========
+-optimizationpasses 5
+-dontusemixedcaseclassnames
+-dontskipnonpubliclibraryclasses
+-dontskipnonpubliclibraryclassmembers
+-dontpreverify
+-verbose
+-optimizations !code/simplification/arithmetic,!field/*,!class/merging/*
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ========== KOTLIN ==========
+-keepattributes *Annotation*
+-keep class kotlin.** { *; }
+-dontwarn kotlin.**
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ========== FIREBASE ==========
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.firebase.**
+-keepattributes Signature, *Annotation*
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ========== ROOM DATABASE ==========
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+
+# ========== MAPBOX ==========
+-keep class com.mapbox.** { *; }
+-dontwarn com.mapbox.**
+
+# ========== COROUTINES ==========
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# ========== VIEWMODEL/LIFECYCLE ==========
+-keep class * extends androidx.lifecycle.ViewModel
+
+# ========== NAVIGATION ==========
+-keep class androidx.navigation.** { *; }
+-dontwarn androidx.navigation.**
+
+# ========== COMPOSE ==========
+-keep class androidx.compose.runtime.** { *; }
+-dontwarn androidx.compose.**
+
+# ========== FIREBASE AUTH ==========
+-keep class com.google.firebase.auth.** { *; }
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+
+# ========== ROOM QUERIES ==========
+-keepclassmembers class * {
+    @androidx.room.Insert *;
+    @androidx.room.Update *;
+    @androidx.room.Delete *;
+    @androidx.room.Query *;
+}
+
+# ========== SERIALIZATION ==========
+-keepattributes InnerClasses
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
+}
+
+# ========== HILT ==========
+-keep class com.google.dagger.hilt.** { *; }
+-dontwarn com.google.dagger.hilt.**

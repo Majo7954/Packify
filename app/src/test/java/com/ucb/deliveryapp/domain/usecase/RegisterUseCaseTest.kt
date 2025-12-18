@@ -1,8 +1,9 @@
 package com.ucb.deliveryapp.domain.usecase
 
-import com.ucb.deliveryapp.data.entity.User
-import com.ucb.deliveryapp.domain.repository.UserRepository
-import com.ucb.deliveryapp.util.Result
+import com.ucb.deliveryapp.features.auth.data.remote.dto.UserDto
+import com.ucb.deliveryapp.features.auth.domain.repository.UserRepository
+import com.ucb.deliveryapp.core.util.Result
+import com.ucb.deliveryapp.features.auth.domain.usecase.RegisterUseCase
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.slot
@@ -18,7 +19,7 @@ class RegisterUseCaseTest {
     private lateinit var registerUseCase: RegisterUseCase
     private val mockUserRepository: UserRepository = mockk()
 
-    private val testUser = User(
+    private val testUser = UserDto(
         id = "",
         email = "test@ucb.edu.bo",
         username = "testuser",
@@ -80,7 +81,7 @@ class RegisterUseCaseTest {
     @Test
     fun `registrar usuario deberia pasar el usuario correcto al repositorio`() = runTest {
         // Dado que
-        val slotUsuario = slot<User>()
+        val slotUsuario = slot<UserDto>()
         coEvery {
             mockUserRepository.registerUser(capture(slotUsuario))
         } returns Result.Success(true)
